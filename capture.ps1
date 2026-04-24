@@ -69,8 +69,4 @@ while ($true) {
 
     $sleepTime = Get-Random -Minimum 30 -Maximum 90
     Start-Sleep -Seconds $sleepTime
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 68fcabb72c11c5ee5a113fee567b1a33e268934a

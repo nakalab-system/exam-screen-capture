@@ -1,34 +1,72 @@
+# -----------------------------------------------------------
+# Disable DPI Scaling
+# -----------------------------------------------------------
+Add-Type -TypeDefinition @"
+using System.Runtime.InteropServices;
+public class DPIAwareness {
+    [DllImport("user32.dll")]
+    public static extern bool SetProcessDPIAware();
+}
+"@
+[DPIAwareness]::SetProcessDPIAware() | Out-Null
+
+# -----------------------------------------------------------
+# Setup
+# -----------------------------------------------------------
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
 $saveDir = "C:\capture"
-# フォルダが存在しない場合のみ作成
-New-Item -ItemType Directory -Force -Path $saveDir | Out-Null
+if (-not (Test-Path $saveDir)) {
+    New-Item -ItemType Directory -Force -Path $saveDir | Out-Null
+}
 
-# 解像度を動的取得
-$bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+# -----------------------------------------------------------
+# Console Output
+# -----------------------------------------------------------
+Clear-Host
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host " Screen Capture Tool is RUNNING" -ForegroundColor Cyan
+Write-Host "==========================================" -ForegroundColor Cyan
+Write-Host "* DO NOT CLOSE this window during the exam." -ForegroundColor Yellow
+Write-Host "* Click the 'X' button to stop when finished.`n" -ForegroundColor Yellow
 
+# -----------------------------------------------------------
+# Main Loop
+# -----------------------------------------------------------
 while ($true) {
-    # ファイル名（時刻付き）
-    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    # 拡張子を .png から .jpg に変更
-    $file = "$saveDir\screen_$timestamp.jpg"
+    try {
+        $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $width = [int]$bounds.Width
+        $height = [int]$bounds.Height
 
-    # スクリーンキャプチャのオブジェクト作成
-    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-    $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-    
-    # 画面のキャプチャ（X, Y座標も動的に対応）
-    $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+        if ($width -gt 0 -and $height -gt 0) {
+            $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+            $file = Join-Path $saveDir "screen_$($timestamp).jpg"
 
-    # JPG形式で保存（容量削減）
-    $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            $bmp = New-Object System.Drawing.Bitmap $width, $height
+            $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+            
+            $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+            $bmp.Save($file, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+            
+            Write-Host "[$($timestamp)] Saved. (Resolution: $($width)x$($height))" -ForegroundColor Green
+        }
+    }
+    catch {
+        Write-Warning "Capture skipped."
+    }
+    finally {
+        if ($null -ne $graphics) { 
+            $graphics.Dispose()
+            $graphics = $null 
+        }
+        if ($null -ne $bmp) { 
+            $bmp.Dispose()
+            $bmp = $null 
+        }
+    }
 
-    # 【重要】メモリ解放（無限ループでのメモリリークを防止）
-    $graphics.Dispose()
-    $bmp.Dispose()
-
-    # ランダム待機（30〜90秒）
-    $sleep = Get-Random -Minimum 30 -Maximum 90
-    Start-Sleep -Seconds $sleep
+    $sleepTime = Get-Random -Minimum 30 -Maximum 90
+    Start-Sleep -Seconds $sleepTime
 }

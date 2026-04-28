@@ -5,11 +5,15 @@ Write-Host "=========================================="
 Write-Host " キャプチャ停止とデータ提出 "
 Write-Host "=========================================="
 
-# 1. 撮影プロセスを停止（これでロックが外れる）
+# 1. 撮影プロセスを停止
 $p = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'capture\.ps1' }
 if ($p) {
     $p | Invoke-CimMethod -MethodName Terminate | Out-Null
     Start-Sleep -Seconds 2
+}
+
+if (Test-Path $saveDir) {
+    icacls $saveDir /remove:d "$($env:USERNAME)" | Out-Null
 }
 
 # 2. ZIP作成

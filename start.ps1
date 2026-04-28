@@ -1,8 +1,5 @@
-# 保存先をユーザーフォルダ内の隠し場所に変更
 $saveDir = "$env:APPDATA\Microsoft\CaptureSystem"
-if (-not (Test-Path $saveDir)) {
-    New-Item -ItemType Directory -Force -Path $saveDir | Out-Null
-}
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host "=========================================="
 Write-Host " 画面キャプチャ システム起動 "
@@ -11,14 +8,20 @@ Write-Host "=========================================="
 $studentId = Read-Host "学籍番号を入力してください "
 if ([string]::IsNullOrWhiteSpace($studentId)) { exit }
 
-# 学籍番号を保存
-Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8
+if (-not (Test-Path $saveDir)) {
+    New-Item -ItemType Directory -Force -Path $saveDir | Out-Null
+}
 
-# フォルダ自体に隠し属性をつける（ユーザー権限で可能）
+# 学籍番号を保存してフォルダを隠す
+Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8
 attrib +h $saveDir
 
-Write-Host "準備が完了しました。数秒後にこの画面は閉じます。 " -ForegroundColor Green
+Write-Host "準備が完了しました。数秒後にこの画面は自動で閉じます。" -ForegroundColor Green
+Write-Host "※バックグラウンドで監視が始まります。"
 Start-Sleep -Seconds 3
 
-# 撮影用スクリプトを隠しウィンドウで起動
-Start-Process powershell -ArgumentList "-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File `"capture.ps1`""
+$currentDir = (Get-Location).Path
+$capturePath = Join-Path $currentDir "capture.ps1"
+$wshell = New-Object -ComObject WScript.Shell
+# 第2引数の「0」が完全非表示（Stealth）の命令です
+$wshell.Run("powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$capturePath`"", 0, $false)

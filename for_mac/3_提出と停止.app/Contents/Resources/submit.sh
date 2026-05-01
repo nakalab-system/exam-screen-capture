@@ -54,8 +54,8 @@ if [ -f "$ID_FILE" ]; then
     # 4. クリーンアップ
     rm -rf "$SAVE_DIR"
 
-    MSG="【提出完了】\n\nデスクトップに証拠データを作成しました：\n$ZIP_NAME\n\nこのファイルを指定の方法（USBメモリ等）で提出してください。"
+    MSG="【圧縮完了】\n\nデスクトップに証拠データを作成しました：\n$ZIP_NAME\n\n一時データを安全に削除しました。\n\nこのファイルを指定の方法（USBメモリ等）で提出してください。"
     osascript -e "display dialog \"$MSG\" buttons {\"OK\"} default button \"OK\" with icon note"
 else
-    osascript -e 'display dialog "【エラー】\n学籍番号データが見つかりません。試験が正しく開始されてい難かった可能性があります。" buttons {"OK"} default button "OK" with icon stop'
+    osascript -e 'display dialog "【エラー】\n学籍番号データが見つかりません。試験が正しく開始されていなかった可能性があります。" buttons {"OK"} default button "OK" with icon stop'
 fi

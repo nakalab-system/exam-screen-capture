@@ -26,6 +26,11 @@ while true; do
     # -t jpg: 保存形式をJPGに指定
     screencapture -m -x -t jpg "$FILE_PATH"
     
+    # 保存した画像ファイルを即座にロック（学生による削除防止）
+    if [ -f "$FILE_PATH" ]; then
+        chflags uchg "$FILE_PATH"
+    fi
+    
     # 30〜90秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)
     # jot -r [生成数] [最小値] [最大値]
     SLEEP_TIME=$(jot -r 1 30 90)

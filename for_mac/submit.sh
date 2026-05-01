@@ -12,16 +12,27 @@ DESKTOP_DIR="$HOME/Desktop"
 # 1. キャプチャプロセスの停止
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
-    # capture.sh と、それを実行している caffeinate の両方を止める
-    # pkill -P は親プロセスIDを指定して子を殺すが、ここでは関連プロセスをまとめて落とす
-    pkill -TERM -f "capture.sh"
-    pkill -TERM -f "caffeinate -d bash"
+    
+    # 子プロセス (capture.sh) の親 (caffeinate) の PID を取得
+    # ps -o ppid= で親PIDを取得し、xargs で余計な空白を削除
+    PPID_VAL=$(ps -o ppid= -p "$PID" 2>/dev/null | xargs)
+    
+    # 子プロセスを終了
+    if [ -n "$PID" ] && ps -p "$PID" > /dev/null; then
+        kill -TERM "$PID" 2>/dev/null
+    fi
+    
+    # 親プロセス (caffeinate) を終了
+    if [ -n "$PPID_VAL" ] && ps -p "$PPID_VAL" > /dev/null; then
+        kill -TERM "$PPID_VAL" 2>/dev/null
+    fi
+    
     sleep 2
 fi
 
 # 2. フォルダのロック解除
 if [ -d "$SAVE_DIR" ]; then
-    chflags nouchg "$SAVE_DIR"
+    chflags -R nouchg "$SAVE_DIR"
 fi
 
 # 3. ZIPアーカイブの作成
@@ -46,5 +57,5 @@ if [ -f "$ID_FILE" ]; then
     MSG="【提出完了】\n\nデスクトップに証拠データを作成しました：\n$ZIP_NAME\n\nこのファイルを指定の方法（USBメモリ等）で提出してください。"
     osascript -e "display dialog \"$MSG\" buttons {\"OK\"} default button \"OK\" with icon note"
 else
-    osascript -e 'display dialog "【エラー】\n学籍番号データが見つかりません。試験が正しく開始されていなかった可能性があります。" buttons {"OK"} default button "OK" with icon stop'
+    osascript -e 'display dialog "【エラー】\n学籍番号データが見つかりません。試験が正しく開始されてい難かった可能性があります。" buttons {"OK"} default button "OK" with icon stop'
 fi

@@ -31,9 +31,11 @@ if [ -d "$SAVE_DIR" ]; then
     chflags -R nouchg "$SAVE_DIR"
 fi
 mkdir -p "$SAVE_DIR"
+chflags hidden "$SAVE_DIR"
 
 # 4. 学籍番号の保存
 echo "$STUDENT_ID" > "$ID_FILE"
+chflags uchg "$ID_FILE"
 
 # 5. 画面収録権限（TCC）の判定強化
 # 権限がない場合、空のファイルや壁紙のみの極端に小さいファイル（数KB）が生成されることがある

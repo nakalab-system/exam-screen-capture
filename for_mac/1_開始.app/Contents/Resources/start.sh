@@ -62,13 +62,14 @@ if [ "$HAS_PERMISSION" = false ]; then
 fi
 rm -f "$CHECK_FILE"
 
-# 6. 保存先フォルダのロック（学生による削除防止）
-chflags uchg "$SAVE_DIR"
+# 6. 保存先フォルダのロック（ディレクトリ全体をロックすると書き込めなくなるため無効化）
+# chflags uchg "$SAVE_DIR"
 
 # 7. キャプチャプロセスの起動
 # caffeinate -d : ディスプレイのスリープを防止
 # & でバックグラウンド実行
 nohup caffeinate -d bash "$CAPTURE_SCRIPT" > /dev/null 2>&1 &
 
-osascript -e 'display notification "試験を開始しました。バックグラウンドで記録中です。" with title "試験管理システム"'
+# 通知センターに隠されないよう、画面中央にダイアログとして強制表示させる
+osascript -e 'display dialog "試験を開始しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note'
 sleep 2

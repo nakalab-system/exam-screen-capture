@@ -28,7 +28,7 @@ fi
 
 # 3. 環境準備（ロック解除して書き込み可能にする）
 if [ -d "$SAVE_DIR" ]; then
-    chflags nouchg "$SAVE_DIR"
+    chflags -R nouchg "$SAVE_DIR"
 fi
 mkdir -p "$SAVE_DIR"
 

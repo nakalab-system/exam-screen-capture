@@ -35,13 +35,25 @@ mkdir -p "$SAVE_DIR"
 # 4. 学籍番号の保存
 echo "$STUDENT_ID" > "$ID_FILE"
 
-# 5. 画面収録権限（TCC）の簡易チェック
-# 権限がない場合、screencaptureは失敗するか空のファイルを生成する
-# ここではシステム設定を開く案内を出す
-CHECK_FILE="/tmp/tcc_check.png"
-screencapture -x "$CHECK_FILE" 2>/dev/null
-if [ ! -f "$CHECK_FILE" ] || [ ! -s "$CHECK_FILE" ]; then
-    osascript -e 'display dialog "【重要】画面収録の権限が必要です。\n\n「システム設定」＞「プライバシーとセキュリティ」＞「画面収録」で、このアプリを許可してください。" buttons {"システム設定を開く", "終了"} default button "システム設定を開く"'
+# 5. 画面収録権限（TCC）の判定強化
+# 権限がない場合、空のファイルや壁紙のみの極端に小さいファイル（数KB）が生成されることがある
+CHECK_FILE="/tmp/tcc_check.jpg"
+screencapture -x -t jpg "$CHECK_FILE" 2>/dev/null
+
+# ファイルが存在しない、またはサイズが20KB未満の場合は権限なしとみなす
+if [ ! -f "$CHECK_FILE" ]; then
+    HAS_PERMISSION=false
+else
+    FILE_SIZE=$(stat -f%z "$CHECK_FILE")
+    if [ "$FILE_SIZE" -lt 20480 ]; then
+        HAS_PERMISSION=false
+    else
+        HAS_PERMISSION=true
+    fi
+fi
+
+if [ "$HAS_PERMISSION" = false ]; then
+    osascript -e 'display dialog "【重要】画面収録の権限が正しく設定されていない可能性があります。\n\n「システム設定」＞「プライバシーとセキュリティ」＞「画面収録」で、このアプリを許可してください。\n既に許可されている場合は、一度「ー」で削除してから再度追加してください。" buttons {"システム設定を開く", "終了"} default button "システム設定を開く"'
     if [ "$?" -eq 0 ]; then
         open "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
     fi

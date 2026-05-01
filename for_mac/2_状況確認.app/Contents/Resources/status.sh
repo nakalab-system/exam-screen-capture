@@ -21,8 +21,8 @@ if [ "$RUNNING" = true ]; then
     LATEST_FILE=$(ls -t "$SAVE_DIR"/img_*.jpg 2>/dev/null | head -n 1)
     
     if [ -n "$LATEST_FILE" ]; then
-        # 最終撮影時刻を取得 (HH:mm)
-        LAST_TIME=$(date -r "$LATEST_FILE" "+%H時%M分")
+        # 最終撮影時刻を取得 (HH時mm分ss秒)
+        LAST_TIME=$(date -r "$LATEST_FILE" "+%H時%M分%S秒")
         MSG="【正常に稼働中】\n最終撮影: $LAST_TIME"
     else
         MSG="【正常に稼働中】\n（まだ画像は保存されていません）"

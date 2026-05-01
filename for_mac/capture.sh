@@ -26,7 +26,8 @@ while true; do
     # -t jpg: 保存形式をJPGに指定
     screencapture -m -x -t jpg "$FILE_PATH"
     
-    # 30〜90秒のランダムな間隔で待機
-    SLEEP_TIME=$((RANDOM % 61 + 30))
+    # 30〜90秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)
+    # jot -r [生成数] [最小値] [最大値]
+    SLEEP_TIME=$(jot -r 1 30 90)
     sleep "$SLEEP_TIME"
 done

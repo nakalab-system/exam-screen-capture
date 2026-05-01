@@ -30,6 +30,9 @@ if [ -f "$ID_FILE" ]; then
     ZIP_NAME="${STUDENT_ID}_evidence.zip"
     ZIP_PATH="$DESKTOP_DIR/$ZIP_NAME"
     
+    # プロセス管理用ファイルを提出データから除外するために削除
+    rm -f "$PID_FILE"
+    
     # 既存の同名ファイルがあれば削除
     rm -f "$ZIP_PATH"
     

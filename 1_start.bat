@@ -1,3 +1,3 @@
 @echo off
 cd /d "%~dp0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = [System.IO.File]::ReadAllText('%~dp0start.ps1', [System.Text.Encoding]::UTF8); Invoke-Expression $c"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0start.ps1"

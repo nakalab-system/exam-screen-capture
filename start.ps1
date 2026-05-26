@@ -1,30 +1,36 @@
-$saveDir = "$env:APPDATA\Microsoft\CaptureSystem"
-$OutputEncoding = [System.Text.Encoding]::UTF8
+﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
 
 Write-Host "=========================================="
 Write-Host " 画面キャプチャ システム起動 "
 Write-Host "=========================================="
 
-$studentId = Read-Host "学籍番号を入力してください "
-if ([string]::IsNullOrWhiteSpace($studentId)) { exit }
+$saveDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
 
-if (-not (Test-Path $saveDir)) {
-    New-Item -ItemType Directory -Force -Path $saveDir | Out-Null
+if (Test-Path $saveDir) {
+    [void](icacls $saveDir /remove:d ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) > $null 2>&1)
+    [void](Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue > $null 2>&1)
+}
+[void](New-Item -ItemType Directory -Force -Path $saveDir)
+
+$studentId = ""
+while ($studentId -notmatch "^[0-9]{8}$") {
+    $studentId = Read-Host "学籍番号を入力してください（半角数字8桁）"
+    if ($studentId -notmatch "^[0-9]{8}$") {
+        Write-Host "エラー：学籍番号は「半角数字8桁」で入力してください。" -ForegroundColor Red
+    }
 }
 
-# 学籍番号を保存してフォルダを隠す
-Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8
-attrib +h $saveDir
+[void](Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8)
+[void](attrib +h $saveDir)
 
-# 画像は保存できるが、削除だけを不可能にする
-icacls $saveDir /deny "$($env:USERNAME):(OI)(CI)(DE,DC)" | Out-Null
+$currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+[void](icacls $saveDir /deny "${currentUser}:(DE,DC)" > $null 2>&1)
 
-Write-Host "準備が完了しました。数秒後にこの画面は自動で閉じます。" -ForegroundColor Green
-Write-Host "※バックグラウンドで監視が始まります。"
-Start-Sleep -Seconds 3
+$capturePath = "$PSScriptRoot\capture.ps1"
+[void](Start-Process "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$capturePath`"" -WindowStyle Hidden)
 
-# 画面を完全に隠して起動
-$currentDir = (Get-Location).Path
-$capturePath = Join-Path $currentDir "capture.ps1"
-$wshell = New-Object -ComObject WScript.Shell
-$wshell.Run("powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$capturePath`"", 0, $false)
+Write-Host "画面キャプチャを開始しました..." -ForegroundColor Green
+Start-Sleep -Seconds 2
+
+exit

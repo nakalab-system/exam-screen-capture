@@ -29,8 +29,16 @@ try {
 "@
     Add-Type -TypeDefinition $win32
     
-    $saveDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-    $studentId = if (Test-Path "$saveDir\student_id.txt") { (Get-Content "$saveDir\student_id.txt").Trim() } else { "Unknown" }
+    $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+    $subDir = Get-ChildItem -Path $baseDir -Directory -Force | Select-Object -First 1
+    
+    if ($subDir) {
+        $saveDir = $subDir.FullName
+        $studentId = $subDir.Name.Split('_')[0]
+    } else {
+        $saveDir = $baseDir
+        $studentId = "Unknown"
+    }
 
     $form = New-Object System.Windows.Forms.Form
     $form.Size = New-Object System.Drawing.Size(280, 22)
@@ -80,21 +88,39 @@ try {
                 if (($screen.Bounds.X + $screen.Bounds.Width) -gt $maxX) { $maxX = ($screen.Bounds.X + $screen.Bounds.Width) }
                 if (($screen.Bounds.Y + $screen.Bounds.Height) -gt $maxY) { $maxY = ($screen.Bounds.Y + $screen.Bounds.Height) }
             }
+            
             $totalW = $maxX - $minX
             $totalH = $maxY - $minY
-            $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
+            
+            # ディスプレイ取得失敗時のフェイルセーフ
+            if ($totalW -eq 0 -or $totalH -eq 0) {
+                $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+                $totalW = $bounds.Width; $totalH = $bounds.Height
+                $minX = $bounds.X; $minY = $bounds.Y
+            }
 
+            $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
             $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
             $graphics = [System.Drawing.Graphics]::FromImage($bmp)
             $graphics.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
             
             $count = @(Get-ChildItem -Path $saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count + 1
-            $bmp.Save("$saveDir\${studentId}_$($count.ToString("D2"))_$(Get-Date -Format 'HHmmss').jpg", [System.Drawing.Imaging.ImageFormat]::Jpeg)
+
+            $timestamp = Get-Date -Format 'HHmmss'
+            $countStr = "{0:D2}" -f $count
+            $fileName = "${studentId}_${countStr}_${timestamp}.jpg"
+            $filePath = Join-Path -Path $saveDir -ChildPath $fileName
+            
+            $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
             
             $label.Text = "[$studentId] 監視中: $($count)枚 ($(Get-Date -Format 'HH:mm'))"
             
             $graphics.Dispose(); $bmp.Dispose()
-        } catch {}
+        } catch {
+            # 万が一保存に失敗した場合はデスクトップにエラーログを吐き出す
+            $errMsg = "Capture Error at $(Get-Date): $_"
+            $errMsg | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append
+        }
         
         $randomInterval = Get-Random -Minimum 30 -Maximum 91
         for ($i = 0; $i -lt $randomInterval; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 1000 }

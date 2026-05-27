@@ -1,13 +1,13 @@
-﻿[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-
-# 【改善】Local AppData に変更
-$saveDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+﻿$baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+$desktopPath = [Environment]::GetFolderPath('Desktop')
+$downloadsPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads"
 
 Write-Host "=========================================="
-Write-Host " キャプチャ停止と証拠データ作成 (USB提出用) "
+Write-Host " 提出用画像データのパッケージ化 "
 Write-Host "=========================================="
 Write-Host ""
 
+# 監視プロセスの停止
 $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'capture\.ps1' }
 if ($processes) {
     foreach ($p in $processes) {
@@ -16,53 +16,59 @@ if ($processes) {
     Start-Sleep -Seconds 2
 }
 
-if (Test-Path $saveDir) {
-    $currentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-    icacls $saveDir /remove:d "$currentUser" > $null 2>&1
-}
+# 隠しフォルダ内の検索を確実にするため -Force を追加
+$subDir = Get-ChildItem -Path $baseDir -Directory -Force | Select-Object -First 1
 
-if (Test-Path "$saveDir\student_id.txt") {
-    $studentId = (Get-Content "$saveDir\student_id.txt").Trim()
+if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
+    $saveDir = $subDir.FullName
+    $studentId = $matches[1]
+    $savedDate = $matches[2]
     $datetime = Get-Date -Format "yyyyMMdd_HHmmss"
     
-    # 保存先候補
-    $desktopPath = "$([Environment]::GetFolderPath('Desktop'))\${studentId}_${datetime}.zip"
-    $downloadsPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads\${studentId}_${datetime}.zip"
-    $tempZip = "$env:TEMP\${studentId}_${datetime}.zip"
+    # 学生が作業している解答フォルダのパス
+    $answerDirDesktop = "$desktopPath\${studentId}_${savedDate}"
+    $answerDirDownloads = "$downloadsPath\${studentId}_${savedDate}"
     
-    Write-Host "データを圧縮しています... " -ForegroundColor Cyan
+    # 作成する画像ZIPの名前
+    $zipName = "${studentId}_${datetime}.zip"
+    $tempZip = "$env:TEMP\$zipName"
+    
+    Write-Host "画像を圧縮しています... " -ForegroundColor Cyan
+    
     Compress-Archive -Path "$saveDir\*" -DestinationPath $tempZip -Force
 
-    # 作成したZIPをデスクトップへ移動。OneDriveエラーが出た場合はダウンロードフォルダへ逃がす
+    # 格納先（学生の解答フォルダ）の特定
+    $targetDir = ""
+    if (Test-Path $answerDirDesktop) {
+        $targetDir = $answerDirDesktop
+    } elseif (Test-Path $answerDirDownloads) {
+        $targetDir = $answerDirDownloads
+    } else {
+        $targetDir = $desktopPath
+        Write-Host "[警告] 解答用フォルダが見つからないため、デスクトップ直下に保存します。" -ForegroundColor Yellow
+    }
+
+    $finalDest = "$targetDir\$zipName"
+
     try {
-        Move-Item -Path $tempZip -Destination $desktopPath -Force -ErrorAction Stop
-        $finalPath = $desktopPath
+        Move-Item -Path $tempZip -Destination $finalDest -Force -ErrorAction Stop
         
         Write-Host "==========================================" -ForegroundColor Green
-        Write-Host " 処理完了：デスクトップに ZIP を作成しました！ " -ForegroundColor Green
-        Write-Host " -> $finalPath " -ForegroundColor Yellow
-        Write-Host " このファイルをTAのUSBメモリに提出してください。 " -ForegroundColor Yellow
+        Write-Host " 処理完了：解答用フォルダ内に画像ZIPを格納しました！ " -ForegroundColor Green
+        Write-Host " -> $finalDest " -ForegroundColor Yellow
+        Write-Host " このフォルダごとTAに提出してください。 " -ForegroundColor Yellow
         Write-Host "==========================================" -ForegroundColor Green
     } catch {
-        Write-Host "[警告] OneDrive等の影響でデスクトップへの保存がブロックされました。" -ForegroundColor Yellow
-        Write-Host "       代わりに「ダウンロード」フォルダへ保存します..." -ForegroundColor Yellow
-        
-        Move-Item -Path $tempZip -Destination $downloadsPath -Force
-        $finalPath = $downloadsPath
-        
-        Write-Host "==========================================" -ForegroundColor Green
-        Write-Host " 処理完了：ダウンロードフォルダに ZIP を作成しました！ " -ForegroundColor Green
-        Write-Host " -> $finalPath " -ForegroundColor Yellow
-        Write-Host " このファイルをTAのUSBメモリに提出してください。 " -ForegroundColor Yellow
-        Write-Host "==========================================" -ForegroundColor Green
+        Write-Host "[エラー] ZIPファイルの作成・移動に失敗しました。" -ForegroundColor Red
     }
+    
 } else {
     Write-Host "[エラー] 学籍番号データが見つかりません。" -ForegroundColor Red
 }
 
-if (Test-Path $saveDir) {
-    Remove-Item $saveDir -Recurse -Force -ErrorAction SilentlyContinue
+# 後片付け（隠しフォルダの画像を完全削除）
+if (Test-Path $baseDir) {
+    Remove-Item $baseDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 Write-Host ""
-Write-Host "一時データを安全に削除しました。"
-Start-Sleep -Seconds 5
+Write-Host "システムデータを安全に削除しました。"

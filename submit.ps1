@@ -3,7 +3,7 @@ $desktopPath = [Environment]::GetFolderPath('Desktop')
 $downloadsPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads"
 
 Write-Host "=========================================="
-Write-Host " 提出用画像データのパッケージ化 "
+Write-Host " 　　　提出準備　　　 "
 Write-Host "=========================================="
 Write-Host ""
 
@@ -27,10 +27,10 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
     $answerDirDesktop = "$desktopPath\${studentId}_${savedDate}"
     $answerDirDownloads = "$downloadsPath\${studentId}_${savedDate}"
     
-    $zipName = "${studentId}_${datetime}_監視画像.zip"
+    $zipName = "${studentId}_${datetime}.zip"
     $tempZip = "$env:TEMP\$zipName"
     
-    Write-Host "監視画像を圧縮しています... " -ForegroundColor Cyan
+    Write-Host "キャプチャ画像を圧縮しています... " -ForegroundColor Cyan
     
     Compress-Archive -Path "$saveDir\*" -DestinationPath $tempZip -Force
 
@@ -41,7 +41,7 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
         $targetDir = $answerDirDownloads
     } else {
         $targetDir = $desktopPath
-        Write-Host "[警告] 解答用フォルダが見つからないため、デスクトップ直下に保存します。" -ForegroundColor Yellow
+        Write-Host "[警告] 解答用フォルダが見つからないため，デスクトップ直下に保存します．" -ForegroundColor Yellow
     }
 
     $finalDest = "$targetDir\$zipName"
@@ -50,16 +50,17 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
         Move-Item -Path $tempZip -Destination $finalDest -Force -ErrorAction Stop
         
         Write-Host "==========================================" -ForegroundColor Green
-        Write-Host " 処理完了：解答用フォルダ内に画像ZIPを格納しました！ " -ForegroundColor Green
+        Write-Host " 処理完了：回答用フォルダ内にZIPファイルを格納しました！ " -ForegroundColor Green
         Write-Host " -> $finalDest " -ForegroundColor Yellow
-        Write-Host " このフォルダごとTAに提出してください。 " -ForegroundColor Yellow
+        Write-Host " 提出するCPPファイルを回答用フォルダに入れ， " -ForegroundColor Yellow
+        Write-Host " USBメモリでTAに提出してください． " -ForegroundColor Yellow
         Write-Host "==========================================" -ForegroundColor Green
     } catch {
-        Write-Host "[エラー] ZIPファイルの作成・移動に失敗しました。" -ForegroundColor Red
+        Write-Host "[エラー] ZIPファイルの作成・移動に失敗しました．" -ForegroundColor Red
     }
     
 } else {
-    Write-Host "[エラー] 学籍番号データが見つかりません。" -ForegroundColor Red
+    Write-Host "[エラー] 学籍番号データが見つかりません．" -ForegroundColor Red
 }
 
 if (Test-Path $baseDir) {

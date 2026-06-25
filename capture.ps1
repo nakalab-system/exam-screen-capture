@@ -51,20 +51,12 @@ try {
         $form.Controls.Add($lblTitle)
 
         $lblMsg = New-Object System.Windows.Forms.Label
-        $lblMsg.Text = "ただちに試験監督（TA）を呼んでください。`nこの画面はTA専用の【解除用USBメモリ】を挿入するまで閉じられません。"
+        $lblMsg.Text = "ただちに試験監督（TA）を呼んでください．`nこの画面はTA専用の【解除用USBメモリ】を挿入するまで閉じられません．"
         $lblMsg.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
         $lblMsg.ForeColor = [System.Drawing.Color]::White
         $lblMsg.AutoSize = $true
         $lblMsg.Location = New-Object System.Drawing.Point(55, 140)
         $form.Controls.Add($lblMsg)
-
-        $lblTA = New-Object System.Windows.Forms.Label
-        $lblTA.Text = "【TA向け解除手順】`n1. タスクバーのアイコンからPCのWi-Fiを「オフ」にしてください。`n2. 解除用のUSBメモリをPCに挿入してください。（自動で解除されます）"
-        $lblTA.Font = New-Object System.Drawing.Font("Meiryo UI", 14)
-        $lblTA.ForeColor = [System.Drawing.Color]::LightGray
-        $lblTA.AutoSize = $true
-        $lblTA.Location = New-Object System.Drawing.Point(55, 270)
-        $form.Controls.Add($lblTA)
 
         $script:isLocked = $true
         $usbTimer = New-Object System.Windows.Forms.Timer
@@ -99,25 +91,34 @@ try {
         $saveDir = $baseDir
         $studentId = "Unknown"
     }
+    
+    # ==========================================
+    # 文字サイズを自動計算してバーの幅を決定
+    # ==========================================
+    $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
+    # 最も文字数が多くなる状態を想定して長さを測定する
+    $dummyText = "  [$studentId] 監視中: 999枚 (23:59)  "
+    $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
+    # 余裕を持たせた横幅をピクセルで取得
+    $formWidth = $textSize.Width + 10 
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Size = New-Object System.Drawing.Size(280, 22)
+    $form.Size = New-Object System.Drawing.Size($formWidth, 22)
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
     $form.TopMost = $true
     $form.ShowInTaskbar = $false
     $form.StartPosition = [System.Windows.Forms.FormStartPosition]::Manual
-    $form.Location = New-Object System.Drawing.Point(([int]([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width/2)-140), 0)
+    # 自動計算した横幅をもとに、画面の中央位置も完璧に合わせる
+    $form.Location = New-Object System.Drawing.Point(([int]([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width/2) - [int]($formWidth/2)), 0)
     $form.BackColor = [System.Drawing.Color]::Black
     
     $label = New-Object System.Windows.Forms.Label
     $label.ForeColor = [System.Drawing.Color]::Yellow
     $label.Dock = [System.Windows.Forms.DockStyle]::Fill
     $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-    $label.Font = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
-    $label.Text = "[$studentId] 監視準備中"
+    $label.Font = $textFont
+    $label.Text = "[$studentId] キャプチャ準備中"
     $form.Controls.Add($label)
-
-    # ステータスバーを強制終了（Alt+F4等）から守るブロック処理
     $form.Add_FormClosing({
         $_.Cancel = $true
     })
@@ -151,7 +152,7 @@ try {
     while($true){ 
         $now = Get-Date
 
-        # --- 1. 画面キャプチャ処理 (30〜90秒のランダム間隔) ---
+        # --- 1. 画面キャプチャ処理 ---
         if ($now -ge $nextCaptureTime) {
             try {
                 $minX = 0; $minY = 0; $maxX = 0; $maxY = 0
@@ -179,23 +180,23 @@ try {
                 $filePath = Join-Path -Path $saveDir -ChildPath $fileName
                 $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
                 
-                $label.Text = "[$studentId] 監視中: $($count)枚 ($(Get-Date -Format 'HH:mm'))"
+                $label.Text = "[$studentId] 試験中: $($count)枚 ($(Get-Date -Format 'HH:mm'))"
                 $graphics.Dispose(); $bmp.Dispose()
             } catch {
                 $errMsg = "Capture Error at $(Get-Date): $_"
                 $errMsg | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append
             }
-            $nextCaptureTime = (Get-Date).AddSeconds((Get-Random -Minimum 30 -Maximum 91))
+            $nextCaptureTime = (Get-Date).AddSeconds((Get-Random -Minimum 0 -Maximum 60))
         }
 
-        # --- 2. Pingによるネット監視 (常に5秒間隔) ---
+        # --- 2. Pingによるネット監視 ---
         if ($now -ge $nextPingTime) {
             try {
                 $ping = New-Object System.Net.NetworkInformation.Ping
                 $reply = $ping.Send("8.8.8.8", 1000)
                 if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) {
                     $logTime = Get-Date -Format 'HH:mm:ss'
-                    $logMsg = "[$logTime] インターネット接続を検知しました。"
+                    $logMsg = "[$logTime] インターネット接続を検知しました．"
                     $logMsg | Out-File "$saveDir\network_warning.log" -Append -Encoding UTF8
                     Show-LockScreen
                 }

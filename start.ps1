@@ -31,13 +31,13 @@ while ($true) {
         Write-Host "`n==========================================" -ForegroundColor Red
         Write-Host " 【警告】インターネット接続が検出されました！" -ForegroundColor Red
         Write-Host "==========================================" -ForegroundColor Red
-        Write-Host " 試験を開始するためには、PCを完全にオフラインにする必要があります。" -ForegroundColor Yellow
-        Write-Host " タスクバーの右下から、PCの Wi-Fi を「オフ（切断）」にしてください。" -ForegroundColor White
+        Write-Host " 試験を開始するためには，PCを完全にオフラインにする必要があります．" -ForegroundColor Yellow
+        Write-Host " PCの Wi-Fi を「オフ（切断）」にしてください．" -ForegroundColor White
         Write-Host " ------------------------------------------" -ForegroundColor DarkGray
-        Write-Host " Wi-Fiを切断したら、Enterキーを押して再確認してください..." -ForegroundColor Cyan
+        Write-Host " Wi-Fiを切断したら，Enterキーを押して再確認してください．" -ForegroundColor Cyan
         Read-Host
     } else {
-        Write-Host " -> [OK] オフライン環境を確認しました。`n" -ForegroundColor Green
+        Write-Host " -> [OK] オフライン環境を確認しました．`n" -ForegroundColor Green
         break
     }
 }
@@ -49,7 +49,7 @@ if (Test-Path $baseDir) {
     $oldSubDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($oldSubDir -and $oldSubDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
         $studentId = $matches[1]; $date = $matches[2]; $isResume = $true
-        Write-Host "[検知] 前回の未提出データが見つかりました。キャプチャを再開します。" -ForegroundColor Green
+        Write-Host "[検知] 前回の未提出データが見つかりました．キャプチャを再開します．" -ForegroundColor Green
     } else {
         Remove-Item $baseDir -Recurse -Force -ErrorAction SilentlyContinue > $null 2>&1
     }
@@ -70,7 +70,7 @@ if (-not $isResume) {
             $latestZip = $zips | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             $studentId = $sid; $date = $dir.Name.Split('_')[1]; $isResume = $true
             
-            Write-Host "[検知] 誤って終了された画像ZIPからデータを復元し、再開します..." -ForegroundColor Green
+            Write-Host "[検知] 誤って終了された画像ZIPからデータを復元し，再開します．" -ForegroundColor Green
             
             if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
             $saveDir = "$baseDir\${studentId}_${date}"
@@ -98,7 +98,7 @@ if (-not $isResume) {
     if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
     while ($studentId -notmatch "^[0-9]{8}$") {
         $studentId = Read-Host "学籍番号を入力してください（半角数字8桁）"
-        if ($studentId -notmatch "^[0-9]{8}$") { Write-Host "エラー：学籍番号は「半角数字8桁」で入力してください。" -ForegroundColor Red }
+        if ($studentId -notmatch "^[0-9]{8}$") { Write-Host "エラー：学籍番号は「半角数字8桁」で入力してください．" -ForegroundColor Red }
     }
     $date = Get-Date -Format "yyyyMMdd"
     $saveDir = "$baseDir\${studentId}_${date}"
@@ -139,12 +139,12 @@ try {
 }
 
 Write-Host "`n==========================================" -ForegroundColor Cyan
-Write-Host " 解答用フォルダを準備しました。" -ForegroundColor Cyan
+Write-Host " 回答用フォルダを準備しました．" -ForegroundColor Cyan
 Write-Host " -> $finalAnswerDir " -ForegroundColor Yellow
 Write-Host "==========================================" -ForegroundColor Cyan
 
 [void](Start-Process $fakeExePath -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$secureCapturePath`"" -WindowStyle Hidden)
 
-Write-Host "`n監視を開始しました。ウィンドウを閉じます..." -ForegroundColor Green
+Write-Host "`nキャプチャを開始しました．ウィンドウを閉じます..." -ForegroundColor Green
 Start-Sleep -Seconds 3
 exit

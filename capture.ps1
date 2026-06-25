@@ -30,14 +30,12 @@ try {
     Add-Type -TypeDefinition $win32
 
     # ==========================================
-    # TA専用ロック画面の表示関数（ハッシュ照合版）
+    # TA専用ロック画面（USB物理キー検知版）
     # ==========================================
     function Show-LockScreen {
-        # TA解除用パスワードのSHA-256ハッシュ値
-        $TARGET_HASH = "08499276bc68ad602e1a3fa407135e69bf8fa9586144e5d8a9e7019f7f4a211e" 
-
+        $KEY_FILENAME = "nklab_unlock.key"
         $form = New-Object System.Windows.Forms.Form
-        $form.Size = New-Object System.Drawing.Size(900, 500)
+        $form.Size = New-Object System.Drawing.Size(900, 450)
         $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
         $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None 
         $form.TopMost = $true
@@ -53,7 +51,7 @@ try {
         $form.Controls.Add($lblTitle)
 
         $lblMsg = New-Object System.Windows.Forms.Label
-        $lblMsg.Text = "ただちに試験監督（TA）を呼んでください。`nこの画面はTAがパスワードを入力するまで閉じられません。"
+        $lblMsg.Text = "ただちに試験監督（TA）を呼んでください。`nこの画面はTA専用の【解除用USBメモリ】を挿入するまで閉じられません。"
         $lblMsg.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
         $lblMsg.ForeColor = [System.Drawing.Color]::White
         $lblMsg.AutoSize = $true
@@ -61,51 +59,34 @@ try {
         $form.Controls.Add($lblMsg)
 
         $lblTA = New-Object System.Windows.Forms.Label
-        $lblTA.Text = "【TA向け解除手順】`n1. タスクバーのアイコンからPCのWi-Fiを「オフ」にしてください。`n2. 以下のパスワードを入力して解除してください。"
+        $lblTA.Text = "【TA向け解除手順】`n1. タスクバーのアイコンからPCのWi-Fiを「オフ」にしてください。`n2. 解除用のUSBメモリをPCに挿入してください。（自動で解除されます）"
         $lblTA.Font = New-Object System.Drawing.Font("Meiryo UI", 14)
         $lblTA.ForeColor = [System.Drawing.Color]::LightGray
         $lblTA.AutoSize = $true
-        $lblTA.Location = New-Object System.Drawing.Point(55, 250)
+        $lblTA.Location = New-Object System.Drawing.Point(55, 270)
         $form.Controls.Add($lblTA)
 
-        $txtPass = New-Object System.Windows.Forms.TextBox
-        $txtPass.PasswordChar = '*'
-        $txtPass.Font = New-Object System.Drawing.Font("Meiryo UI", 20)
-        $txtPass.Width = 250
-        $txtPass.Location = New-Object System.Drawing.Point(60, 350)
-        $form.Controls.Add($txtPass)
-
-        $btnUnlock = New-Object System.Windows.Forms.Button
-        $btnUnlock.Text = "解除する"
-        $btnUnlock.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
-        $btnUnlock.Size = New-Object System.Drawing.Size(150, 45)
-        $btnUnlock.Location = New-Object System.Drawing.Point(330, 349)
-        $btnUnlock.BackColor = [System.Drawing.Color]::White
-        $form.Controls.Add($btnUnlock)
-
         $script:isLocked = $true
-
-        $btnUnlock.Add_Click({
-            # 入力されたパスワードをSHA-256でハッシュ化して比較
-            $sha = [System.Security.Cryptography.SHA256]::Create()
-            $bytes = [System.Text.Encoding]::UTF8.GetBytes($txtPass.Text)
-            $hashBytes = $sha.ComputeHash($bytes)
-            $inputHash = [System.BitConverter]::ToString($hashBytes).Replace("-", "").ToLower()
-
-            if ($inputHash -eq $TARGET_HASH) {
-                $script:isLocked = $false
-                $form.Close()
-            } else {
-                [System.Windows.Forms.MessageBox]::Show("パスワードが違います。", "エラー", [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error)
-                $txtPass.Text = ""
-            }
+        $usbTimer = New-Object System.Windows.Forms.Timer
+        $usbTimer.Interval = 1000
+        $usbTimer.Add_Tick({
+            try {
+                $drives = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -and $_.IsReady }
+                foreach ($drive in $drives) {
+                    $keyPath = Join-Path -Path $drive.RootDirectory.FullName -ChildPath $KEY_FILENAME
+                    if (Test-Path $keyPath) {
+                        $usbTimer.Stop()
+                        $script:isLocked = $false
+                        $form.Close()
+                        break
+                    }
+                }
+            } catch {}
         })
-
-        $form.Add_FormClosing({
-            if ($script:isLocked) { $_.Cancel = $true }
-        })
-
+        $form.Add_FormClosing({ if ($script:isLocked) { $_.Cancel = $true } })
+        $usbTimer.Start()
         [void]$form.ShowDialog()
+        $usbTimer.Stop()
     }
     
     $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
@@ -129,12 +110,17 @@ try {
     $form.BackColor = [System.Drawing.Color]::Black
     
     $label = New-Object System.Windows.Forms.Label
-    $label.ForeColor = [System.Drawing.Color]::Lime
+    $label.ForeColor = [System.Drawing.Color]::Yellow
     $label.Dock = [System.Windows.Forms.DockStyle]::Fill
     $label.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
     $label.Font = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
     $label.Text = "[$studentId] 監視準備中"
     $form.Controls.Add($label)
+
+    # ステータスバーを強制終了（Alt+F4等）から守るブロック処理
+    $form.Add_FormClosing({
+        $_.Cancel = $true
+    })
 
     $form.Show()
     
@@ -156,55 +142,68 @@ try {
     })
     $timer.Start()
     
-    while($true){ 
-        try {
-            $minX = 0; $minY = 0; $maxX = 0; $maxY = 0
-            foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
-                if ($screen.Bounds.X -lt $minX) { $minX = $screen.Bounds.X }
-                if ($screen.Bounds.Y -lt $minY) { $minY = $screen.Bounds.Y }
-                if (($screen.Bounds.X + $screen.Bounds.Width) -gt $maxX) { $maxX = ($screen.Bounds.X + $screen.Bounds.Width) }
-                if (($screen.Bounds.Y + $screen.Bounds.Height) -gt $maxY) { $maxY = ($screen.Bounds.Y + $screen.Bounds.Height) }
-            }
-            $totalW = $maxX - $minX; $totalH = $maxY - $minY
-            if ($totalW -eq 0 -or $totalH -eq 0) {
-                $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-                $totalW = $bounds.Width; $totalH = $bounds.Height
-                $minX = $bounds.X; $minY = $bounds.Y
-            }
-            $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
-            $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
-            $graphics = [System.Drawing.Graphics]::FromImage($bmp)
-            $graphics.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
-            
-            $count = @(Get-ChildItem -Path $saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count + 1
-            $timestamp = Get-Date -Format 'HHmmss'
-            $countStr = "{0:D2}" -f $count
-            $fileName = "${studentId}_${countStr}_${timestamp}.jpg"
-            $filePath = Join-Path -Path $saveDir -ChildPath $fileName
-            $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
-            
-            $label.Text = "[$studentId] 監視中: $($count)枚 ($(Get-Date -Format 'HH:mm'))"
-            $graphics.Dispose(); $bmp.Dispose()
+    # ==========================================
+    # 独立デュアル監視アーキテクチャ
+    # ==========================================
+    $nextCaptureTime = Get-Date
+    $nextPingTime = Get-Date
 
-            # --- Pingによるインターネット通信監視 ---
+    while($true){ 
+        $now = Get-Date
+
+        # --- 1. 画面キャプチャ処理 (30〜90秒のランダム間隔) ---
+        if ($now -ge $nextCaptureTime) {
+            try {
+                $minX = 0; $minY = 0; $maxX = 0; $maxY = 0
+                foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
+                    if ($screen.Bounds.X -lt $minX) { $minX = $screen.Bounds.X }
+                    if ($screen.Bounds.Y -lt $minY) { $minY = $screen.Bounds.Y }
+                    if (($screen.Bounds.X + $screen.Bounds.Width) -gt $maxX) { $maxX = ($screen.Bounds.X + $screen.Bounds.Width) }
+                    if (($screen.Bounds.Y + $screen.Bounds.Height) -gt $maxY) { $maxY = ($screen.Bounds.Y + $screen.Bounds.Height) }
+                }
+                $totalW = $maxX - $minX; $totalH = $maxY - $minY
+                if ($totalW -eq 0 -or $totalH -eq 0) {
+                    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+                    $totalW = $bounds.Width; $totalH = $bounds.Height
+                    $minX = $bounds.X; $minY = $bounds.Y
+                }
+                $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
+                $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
+                $graphics = [System.Drawing.Graphics]::FromImage($bmp)
+                $graphics.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
+                
+                $count = @(Get-ChildItem -Path $saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count + 1
+                $timestamp = Get-Date -Format 'HHmmss'
+                $countStr = "{0:D2}" -f $count
+                $fileName = "${studentId}_${countStr}_${timestamp}.jpg"
+                $filePath = Join-Path -Path $saveDir -ChildPath $fileName
+                $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
+                
+                $label.Text = "[$studentId] 監視中: $($count)枚 ($(Get-Date -Format 'HH:mm'))"
+                $graphics.Dispose(); $bmp.Dispose()
+            } catch {
+                $errMsg = "Capture Error at $(Get-Date): $_"
+                $errMsg | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append
+            }
+            $nextCaptureTime = (Get-Date).AddSeconds((Get-Random -Minimum 30 -Maximum 91))
+        }
+
+        # --- 2. Pingによるネット監視 (常に5秒間隔) ---
+        if ($now -ge $nextPingTime) {
             try {
                 $ping = New-Object System.Net.NetworkInformation.Ping
                 $reply = $ping.Send("8.8.8.8", 1000)
-                
                 if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) {
                     $logTime = Get-Date -Format 'HH:mm:ss'
                     $logMsg = "[$logTime] インターネット接続を検知しました。"
                     $logMsg | Out-File "$saveDir\network_warning.log" -Append -Encoding UTF8
-                    
                     Show-LockScreen
                 }
             } catch {}
-            
-        } catch {
-            $errMsg = "Capture Error at $(Get-Date): $_"
-            $errMsg | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append
+            $nextPingTime = (Get-Date).AddSeconds(5)
         }
-        $randomInterval = Get-Random -Minimum 30 -Maximum 91
-        for ($i = 0; $i -lt $randomInterval; $i++) { [System.Windows.Forms.Application]::DoEvents(); Start-Sleep -Milliseconds 1000 }
+        
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 1000
     }
 } catch { (Get-Date).ToString() + " Fatal: $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\debug.log" -Append }

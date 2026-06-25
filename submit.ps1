@@ -7,8 +7,8 @@ Write-Host " 提出用画像データのパッケージ化 "
 Write-Host "=========================================="
 Write-Host ""
 
-# 監視プロセスの停止
-$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match 'capture\.ps1' }
+# 偽装したプロセス名（WinSysMonitor.exe）を狙って停止する
+$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'WinSysMonitor.exe' }
 if ($processes) {
     foreach ($p in $processes) {
         $p | Invoke-CimMethod -MethodName Terminate | Out-Null
@@ -16,7 +16,6 @@ if ($processes) {
     Start-Sleep -Seconds 2
 }
 
-# 隠しフォルダ内の検索を確実にするため -Force を追加
 $subDir = Get-ChildItem -Path $baseDir -Directory -Force | Select-Object -First 1
 
 if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
@@ -25,19 +24,16 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
     $savedDate = $matches[2]
     $datetime = Get-Date -Format "yyyyMMdd_HHmmss"
     
-    # 学生が作業している解答フォルダのパス
     $answerDirDesktop = "$desktopPath\${studentId}_${savedDate}"
     $answerDirDownloads = "$downloadsPath\${studentId}_${savedDate}"
     
-    # 作成する画像ZIPの名前
-    $zipName = "${studentId}_${datetime}.zip"
+    $zipName = "${studentId}_${datetime}_監視画像.zip"
     $tempZip = "$env:TEMP\$zipName"
     
-    Write-Host "画像を圧縮しています... " -ForegroundColor Cyan
+    Write-Host "監視画像を圧縮しています... " -ForegroundColor Cyan
     
     Compress-Archive -Path "$saveDir\*" -DestinationPath $tempZip -Force
 
-    # 格納先（学生の解答フォルダ）の特定
     $targetDir = ""
     if (Test-Path $answerDirDesktop) {
         $targetDir = $answerDirDesktop
@@ -66,9 +62,6 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
     Write-Host "[エラー] 学籍番号データが見つかりません。" -ForegroundColor Red
 }
 
-# 後片付け（隠しフォルダの画像を完全削除）
 if (Test-Path $baseDir) {
     Remove-Item $baseDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-Write-Host ""
-Write-Host "システムデータを安全に削除しました。"

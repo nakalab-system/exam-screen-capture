@@ -10,22 +10,41 @@ $isResume = $false
 $studentId = ""
 $date = ""
 
-# ==========================================
-# 0. 【新機能】試験開始前のネットワーク切断確認（関所）
-# ==========================================
-Write-Host "`n[準備] ネットワーク接続状態を確認しています..." -ForegroundColor Cyan
+function Test-InternetConnectivity {
+    param([int]$timeoutMs = 1000)
 
-while ($true) {
-    $isConnected = $false
+    $okPing = $false
+    $okDns = $false
+    $okHttp = $false
+
     try {
         $ping = New-Object System.Net.NetworkInformation.Ping
-        $reply = $ping.Send("8.8.8.8", 1000)
-        if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) {
-            $isConnected = $true
-        }
-    } catch {
-        $isConnected = $false
-    }
+        $reply = $ping.Send("8.8.8.8", $timeoutMs)
+        if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) { $okPing = $true }
+    } catch {}
+
+    try {
+        $null = [System.Net.Dns]::GetHostAddresses("www.google.com")
+        $okDns = $true
+    } catch {}
+
+    try {
+        $resp = Invoke-WebRequest -Uri "http://clients3.google.com/generate_204" -Method Get -TimeoutSec 3 -UseBasicParsing
+        if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400) { $okHttp = $true }
+    } catch {}
+
+    $score = 0
+    if ($okPing) { $score++ }
+    if ($okDns)  { $score++ }
+    if ($okHttp) { $score++ }
+
+    return ($score -ge 2)
+}
+
+Write-Host "`n[準備] ネットワーク接続状態を確認しています..." -ForegroundColor Cyan
+while ($true) {
+    $isConnected = $false
+    try { $isConnected = Test-InternetConnectivity } catch { $isConnected = $false }
 
     if ($isConnected) {
         Write-Host "`n==========================================" -ForegroundColor Red
@@ -42,12 +61,14 @@ while ($true) {
     }
 }
 
-# ==========================================
-# 1. 【強制終了対策】隠しフォルダ残骸からの再開
-# ==========================================
 if (Test-Path $baseDir) {
-    $oldSubDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($oldSubDir -and $oldSubDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
+    $oldSubDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+
+    if ($oldSubDir) {
+        [void]($oldSubDir.Name -match "^([0-9]{8})_([0-9]{8})$")
         $studentId = $matches[1]; $date = $matches[2]; $isResume = $true
         Write-Host "[検知] 前回の未提出データが見つかりました．キャプチャを再開します．" -ForegroundColor Green
     } else {
@@ -55,13 +76,14 @@ if (Test-Path $baseDir) {
     }
 }
 
-# ==========================================
-# 2. 【誤Submit対策】提出済みZIPからの復元・再開
-# ==========================================
 if (-not $isResume) {
     $potentialDirs = @()
-    if (Test-Path $desktopPath) { $potentialDirs += @(Get-ChildItem -Path $desktopPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" }) }
-    if (Test-Path $downloadsPath) { $potentialDirs += @(Get-ChildItem -Path $downloadsPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" }) }
+    if (Test-Path $desktopPath) {
+        $potentialDirs += @(Get-ChildItem -Path $desktopPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" })
+    }
+    if (Test-Path $downloadsPath) {
+        $potentialDirs += @(Get-ChildItem -Path $downloadsPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" })
+    }
     
     foreach ($dir in $potentialDirs) {
         $sid = $dir.Name.Split('_')[0]
@@ -91,9 +113,6 @@ if (-not $isResume) {
     }
 }
 
-# ==========================================
-# 3. 新規スタート時の処理
-# ==========================================
 if (-not $isResume) {
     if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
     while ($studentId -notmatch "^[0-9]{8}$") {
@@ -106,26 +125,15 @@ if (-not $isResume) {
     [void](Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8)
 }
 
-# ==========================================
-# 4. プロセス偽装（タスクマネージャー対策）
-# ==========================================
 $originCapturePath = "$PSScriptRoot\capture.ps1"
 $secureCapturePath = "$baseDir\system_core.ps1"
 $fakeExePath = "$baseDir\WinSysMonitor.exe"
 
-if (Test-Path $originCapturePath) {
-    Copy-Item -Path $originCapturePath -Destination $secureCapturePath -Force
-}
-
-if (-not (Test-Path $fakeExePath)) {
-    Copy-Item "$PSHOME\powershell.exe" -Destination $fakeExePath -Force
-}
+if (Test-Path $originCapturePath) { Copy-Item -Path $originCapturePath -Destination $secureCapturePath -Force }
+if (-not (Test-Path $fakeExePath)) { Copy-Item "$PSHOME\powershell.exe" -Destination $fakeExePath -Force }
 
 [void](attrib +h $baseDir)
 
-# ==========================================
-# 解答用フォルダの作成
-# ==========================================
 $answerDirDesktop = "$desktopPath\${studentId}_${date}"
 $answerDirDownloads = "$downloadsPath\${studentId}_${date}"
 $finalAnswerDir = ""

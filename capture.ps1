@@ -240,38 +240,38 @@ public class Win32 {
     }
 
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化 (フォルダ名による当日の判定)
+    # ディレクトリ・学籍番号等の初期化 (「作成日時」のみで判定する安全なロジック)
     # ==========================================
     $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-    $todayStr = Get-Date -Format "yyyyMMdd"
     $todayDate = (Get-Date).Date
 
-    # フォルダ名が「(任意の英数字)_(本日の日付8桁)」に一致するもののみ引き継ぐ
+    # 過去のファイルを開いて「更新日時(LastWriteTime)」が変わってしまっても影響を受けないよう、
+    # 純粋に「今日作成された(CreationTime)」フォルダの中で最新のものだけを引き継ぐ
     $subDir = Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match "^([A-Za-z0-9]+)_($todayStr)$" } |
-        Sort-Object LastWriteTime -Descending |
+        Where-Object { $_.CreationTime.Date -eq $todayDate } |
+        Sort-Object CreationTime -Descending |
         Select-Object -First 1
 
     if ($subDir) {
         $script:saveDir = $subDir.FullName
-        [void]($subDir.Name -match "^([A-Za-z0-9]+)_($todayStr)$")
-        $script:studentId = $matches[1]
+        # 「_」がある場合はその前までを学籍番号とし、無い場合はフォルダ名をそのまま扱う
+        $script:studentId = $subDir.Name.Split('_')[0]
+        if ([string]::IsNullOrWhiteSpace($script:studentId)) {
+            $script:studentId = $subDir.Name
+        }
     } else {
         $script:saveDir = $script:baseDir
         $script:studentId = "Unknown"
     }
 
-    # さらに確実にするため、今日作成または更新された画像ファイルだけをカウントする
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue | 
-        Where-Object { $_.LastWriteTime.Date -eq $todayDate -or $_.CreationTime.Date -eq $todayDate }).Count
+        Where-Object { $_.CreationTime.Date -eq $todayDate }).Count
 
     # バーの横幅計算 (文字が途切れないよう余裕を+30に拡大)
     $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
     $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  " 
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 30
-
-    # 文字列結合エラーを完全に防ぐ -f フォーマットを使用
     $initialText = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, (Get-Date -Format 'HH:mm')
 
     $script:barForm = New-Object System.Windows.Forms.Form

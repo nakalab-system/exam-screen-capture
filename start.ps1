@@ -8,6 +8,7 @@ $downloadsPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads"
 
 $isResume = $false
 $studentId = ""
+$todayStr = Get-Date -Format "yyyyMMdd"
 $date = ""
 
 function Test-InternetConnectivity {
@@ -63,15 +64,16 @@ while ($true) {
 
 if (Test-Path $baseDir) {
     $oldSubDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" } |
+        Where-Object { $_.Name -match "^([0-9]{8})_($todayStr)$" } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 
     if ($oldSubDir) {
-        [void]($oldSubDir.Name -match "^([0-9]{8})_([0-9]{8})$")
+        [void]($oldSubDir.Name -match "^([0-9]{8})_($todayStr)$")
         $studentId = $matches[1]; $date = $matches[2]; $isResume = $true
-        Write-Host "[検知] 前回の未提出データが見つかりました．キャプチャを再開します．" -ForegroundColor Green
+        Write-Host "[検知] 本日の未提出データが見つかりました．キャプチャを再開します．" -ForegroundColor Green
     } else {
+        # 今日のフォルダがない場合（昨日の古いデータなどが残っている場合）、過去のデータを一掃する
         Remove-Item $baseDir -Recurse -Force -ErrorAction SilentlyContinue > $null 2>&1
     }
 }
@@ -79,20 +81,20 @@ if (Test-Path $baseDir) {
 if (-not $isResume) {
     $potentialDirs = @()
     if (Test-Path $desktopPath) {
-        $potentialDirs += @(Get-ChildItem -Path $desktopPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" })
+        $potentialDirs += @(Get-ChildItem -Path $desktopPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_($todayStr)$" })
     }
     if (Test-Path $downloadsPath) {
-        $potentialDirs += @(Get-ChildItem -Path $downloadsPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" })
+        $potentialDirs += @(Get-ChildItem -Path $downloadsPath -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "^([0-9]{8})_($todayStr)$" })
     }
     
     foreach ($dir in $potentialDirs) {
         $sid = $dir.Name.Split('_')[0]
-        $zips = @(Get-ChildItem -Path $dir.FullName -Filter "${sid}_*.zip" -Force -ErrorAction SilentlyContinue)
+        $zips = @(Get-ChildItem -Path $dir.FullName -Filter "${sid}_${todayStr}_*.zip" -Force -ErrorAction SilentlyContinue)
         if ($zips) {
             $latestZip = $zips | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            $studentId = $sid; $date = $dir.Name.Split('_')[1]; $isResume = $true
+            $studentId = $sid; $date = $todayStr; $isResume = $true
             
-            Write-Host "[検知] 誤って終了された画像ZIPからデータを復元し，再開します．" -ForegroundColor Green
+            Write-Host "[検知] 本日の誤って終了された画像ZIPからデータを復元し，再開します．" -ForegroundColor Green
             
             if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
             $saveDir = "$baseDir\${studentId}_${date}"
@@ -119,7 +121,7 @@ if (-not $isResume) {
         $studentId = Read-Host "学籍番号を入力してください（半角数字8桁）"
         if ($studentId -notmatch "^[0-9]{8}$") { Write-Host "エラー：学籍番号は「半角数字8桁」で入力してください．" -ForegroundColor Red }
     }
-    $date = Get-Date -Format "yyyyMMdd"
+    $date = $todayStr
     $saveDir = "$baseDir\${studentId}_${date}"
     [void](New-Item -ItemType Directory -Force -Path $saveDir)
     [void](Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8)

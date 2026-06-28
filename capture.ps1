@@ -239,8 +239,9 @@ public class Win32 {
         [void]$lockForm.ShowDialog()
     }
 
+
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化 (start.ps1 との完全連携版)
+    # ディレクトリ・学籍番号等の初期化
     # ==========================================
     $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
     $todayStr = Get-Date -Format "yyyyMMdd"
@@ -250,14 +251,9 @@ public class Win32 {
     $allFolders = @(Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue)
 
     foreach ($f in $allFolders) {
-        # 1. フォルダ名が「学籍番号(8桁)_今日の日付(8桁)」に一致するか？
         if ($f.Name -match "^([0-9]{8})_($todayStr)$") {
             $sid = $matches[1]
-
-            # 2. start.ps1 が作ってくれた「student_id.txt」が中に存在するか？
-            $idFile = Join-Path -Path $f.FullName -ChildPath "student_id.txt"
-            if (Test-Path $idFile) {
-                # 両方クリアした場合のみ、start.ps1が準備した本日の正規フォルダと認定
+            if (Test-Path (Join-Path -Path $f.FullName -ChildPath "student_id.txt")) {
                 $targetFolder = $f
                 $foundStudentId = $sid
                 break
@@ -265,18 +261,12 @@ public class Win32 {
         }
     }
 
-    if ($targetFolder) {
-        $script:saveDir = $targetFolder.FullName
-        $script:studentId = $foundStudentId
-    } else {
-        # start.ps1 から起動された場合は必ず見つかるはずだが、万が一のフォールバック
-        $script:saveDir = $script:baseDir
-        $script:studentId = "Unknown"
-    }
+    # 万が一 start.ps1 を経由せずに直接起動された場合は、Unknownを作らずに即座に終了する
+    if (-not $targetFolder) { exit }
 
-    # 当日の学籍番号フォルダ内にある .jpg のみをカウント（過去のゴミは混ざらない）
+    $script:saveDir = $targetFolder.FullName
+    $script:studentId = $foundStudentId
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "${script:studentId}_*.jpg" -File -ErrorAction SilentlyContinue).Count
-
 
     # ==========================================
     # バーの横幅計算・UI初期化
@@ -312,7 +302,7 @@ public class Win32 {
     [void][Win32]::SetWindowLong($script:barForm.Handle, [Win32]::GWL_EXSTYLE, $style -bor [Win32]::WS_EX_LAYERED -bor [Win32]::WS_EX_TRANSPARENT)
     [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
 
-    # ホバー時の半透明化タイマー
+    # ホバー時の半透明化タイマー (Start-Sleep排除により動作が格段に滑らかになります)
     $hoverTimer = New-Object System.Windows.Forms.Timer
     $hoverTimer.Interval = 100 
     $hoverTimer.Add_Tick({
@@ -332,13 +322,12 @@ public class Win32 {
     # ==========================================
     $script:nextCaptureTime = Get-Date
     $captureTimer = New-Object System.Windows.Forms.Timer
-    $captureTimer.Interval = 1000 # 1秒ごとに実行
+    $captureTimer.Interval = 1000
     $captureTimer.Add_Tick({
         $now = Get-Date
         
         $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
 
-        # キャプチャ予定時刻を過ぎていたら撮影開始
         if ($now -ge $script:nextCaptureTime) {
             try {
                 $minX = 0; $minY = 0; $maxX = 0; $maxY = 0
@@ -361,7 +350,6 @@ public class Win32 {
                 $g = [System.Drawing.Graphics]::FromImage($bmp)
                 $g.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
 
-                # 枚数カウントアップと保存
                 $script:captureCount++
                 $timestamp = $now.ToString('HHmmss')
                 $countStr = "{0:D3}" -f $script:captureCount
@@ -369,7 +357,6 @@ public class Win32 {
                 $filePath = Join-Path $script:saveDir $fileName
                 $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
 
-                # 撮影直後にもう一度ラベル更新
                 $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
 
                 $g.Dispose(); $bmp.Dispose()
@@ -377,32 +364,32 @@ public class Win32 {
                 "Capture Error at $($now.ToString()): $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append -Encoding UTF8
             }
 
-            # 次回の撮影時間をランダム設定
             $script:nextCaptureTime = $now.AddSeconds((Get-Random -Minimum 1 -Maximum 60))
         }
     })
     $captureTimer.Start()
 
     # ==========================================
-    # メインループ (ネットワーク監視専用)
+    # ネットワーク監視専用タイマー
     # ==========================================
-    $nextPingTime = Get-Date
-
-    while ($true) {
+    $script:nextPingTime = Get-Date
+    $networkTimer = New-Object System.Windows.Forms.Timer
+    $networkTimer.Interval = 500 # 0.5秒ごとにチェックの機会を伺う
+    $networkTimer.Add_Tick({
         $now = Get-Date
-        if ($now -ge $nextPingTime) {
+        if ($now -ge $script:nextPingTime) {
             try {
                 if (Test-InternetConnectivity) {
                     "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$script:saveDir\network_warning.log" -Append -Encoding UTF8
                     Show-LockScreen
                 }
             } catch {}
-            
-            $nextPingTime = (Get-Date).AddSeconds((Get-Random -Minimum 1 -Maximum 11))
+            $script:nextPingTime = (Get-Date).AddSeconds((Get-Random -Minimum 1 -Maximum 11))
         }
-        [System.Windows.Forms.Application]::DoEvents()
-        Start-Sleep -Milliseconds 500
-    }
+    })
+    $networkTimer.Start()
+
+    [System.Windows.Forms.Application]::Run($script:barForm)
 
 } catch {
     (Get-Date).ToString() + " Fatal: $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\debug.log" -Append -Encoding UTF8

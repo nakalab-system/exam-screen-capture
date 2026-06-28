@@ -27,7 +27,6 @@ public class Win32 {
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
     [DllImport("user32.dll")] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     public const int LWA_ALPHA = 0x2;
 }
 "@
@@ -40,6 +39,7 @@ public class Win32 {
     $PFX_FILENAME = "ta_unlock.pfx"
     $ALLOWED_CERT_THUMBPRINT = "78B8D5AB594E14DEA918FB22BC126953D26407AC"
     $REQUIRE_PIN = $true
+    $lockCooldownSeconds = 30
 
     function Normalize-Thumbprint {
         param([string]$s)
@@ -49,6 +49,7 @@ public class Win32 {
 
     function Test-InternetConnectivity {
         param([int]$TimeoutMs = 1000)
+
         $okPing = $false; $okDns = $false; $okHttp = $false
 
         try {
@@ -74,8 +75,54 @@ public class Win32 {
         return ($score -ge 2)
     }
 
+    function Show-PinDialog {
+        param([string]$Title = "TA PIN入力", [string]$Message = "TA PINを入力してください")
+
+        $dlg = New-Object System.Windows.Forms.Form
+        $dlg.Text = $Title
+        $dlg.Size = New-Object System.Drawing.Size(420, 180)
+        $dlg.StartPosition = "CenterScreen"
+        $dlg.FormBorderStyle = "FixedDialog"
+        $dlg.MaximizeBox = $false
+        $dlg.MinimizeBox = $false
+        $dlg.TopMost = $true
+        $dlg.ShowInTaskbar = $false
+
+        $lbl = New-Object System.Windows.Forms.Label
+        $lbl.Text = $Message
+        $lbl.AutoSize = $true
+        $lbl.Location = New-Object System.Drawing.Point(20, 20)
+        $dlg.Controls.Add($lbl)
+
+        $tb = New-Object System.Windows.Forms.TextBox
+        $tb.Location = New-Object System.Drawing.Point(20, 50)
+        $tb.Size = New-Object System.Drawing.Size(360, 24)
+        $tb.UseSystemPasswordChar = $true
+        $dlg.Controls.Add($tb)
+
+        $ok = New-Object System.Windows.Forms.Button
+        $ok.Text = "OK"
+        $ok.Location = New-Object System.Drawing.Point(220, 90)
+        $ok.DialogResult = [System.Windows.Forms.DialogResult]::OK
+        $dlg.Controls.Add($ok)
+
+        $cancel = New-Object System.Windows.Forms.Button
+        $cancel.Text = "キャンセル"
+        $cancel.Location = New-Object System.Drawing.Point(305, 90)
+        $cancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+        $dlg.Controls.Add($cancel)
+
+        $dlg.AcceptButton = $ok
+        $dlg.CancelButton = $cancel
+
+        $result = $dlg.ShowDialog()
+        if ($result -eq [System.Windows.Forms.DialogResult]::OK) { return $tb.Text }
+        return $null
+    }
+
     function Test-TaUsbUnlock {
         param([string]$Pin)
+
         try {
             $target = Normalize-Thumbprint $ALLOWED_CERT_THUMBPRINT
             if ([string]::IsNullOrWhiteSpace($target)) { return $false }
@@ -104,7 +151,7 @@ public class Win32 {
 
     function Show-LockScreen {
         $lockForm = New-Object System.Windows.Forms.Form
-        $lockForm.Size = New-Object System.Drawing.Size(980, 600)
+        $lockForm.Size = New-Object System.Drawing.Size(980, 560)
         $lockForm.StartPosition = "CenterScreen"
         $lockForm.FormBorderStyle = "None"
         $lockForm.TopMost = $true
@@ -116,112 +163,54 @@ public class Win32 {
         $lblTitle.Font = New-Object System.Drawing.Font("Meiryo UI", 28, [System.Drawing.FontStyle]::Bold)
         $lblTitle.ForeColor = [System.Drawing.Color]::Yellow
         $lblTitle.AutoSize = $true
-        $lblTitle.MaximumSize = New-Object System.Drawing.Size(880, 0)
+        $lblTitle.MaximumSize = New-Object System.Drawing.Size(880, 0)   # 自動改行
         $lblTitle.Location = New-Object System.Drawing.Point(45, 40)
         $lockForm.Controls.Add($lblTitle)
-
-        $lblMsgStudent = New-Object System.Windows.Forms.Label
-        $lblMsgStudent.Text = "ただちにTA（試験監督）を呼んでください．`r`n※TAが到着するまで，PCには一切触れないでください．"
-        $lblMsgStudent.Font = New-Object System.Drawing.Font("Meiryo UI", 18, [System.Drawing.FontStyle]::Bold)
-        $lblMsgStudent.ForeColor = [System.Drawing.Color]::White
-        $lblMsgStudent.AutoSize = $true
-        $lblMsgStudent.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblMsgStudent.Location = New-Object System.Drawing.Point(50, 140)
-        $lockForm.Controls.Add($lblMsgStudent)
-
-        $lblMsgTa = New-Object System.Windows.Forms.Label
-        $lblMsgTa.Text = "【TA用操作ガイド】`r`n・「背景を透かす」を長押しすると，背後の画面状況（不正の有無など）を確認できます．`r`n・Wi-Fi切断後にPIN解除をしてください．"
-        $lblMsgTa.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
-        $lblMsgTa.ForeColor = [System.Drawing.Color]::LightYellow
-        $lblMsgTa.AutoSize = $true
-        $lblMsgTa.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblMsgTa.Location = New-Object System.Drawing.Point(50, 240)
-        $lockForm.Controls.Add($lblMsgTa)
 
         $lblStatus = New-Object System.Windows.Forms.Label
         $lblStatus.Text = "状態: TA用USB待機中"
         $lblStatus.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
-        $lblStatus.ForeColor = [System.Drawing.Color]::LightGray
+        $lblStatus.ForeColor = [System.Drawing.Color]::White
         $lblStatus.AutoSize = $true
-        $lblStatus.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblStatus.Location = New-Object System.Drawing.Point(50, 360)
+        $lblStatus.MaximumSize = New-Object System.Drawing.Size(880, 0)  # 自動改行
+        $lblStatus.Location = New-Object System.Drawing.Point(50, 230)
         $lockForm.Controls.Add($lblStatus)
 
-        $lblPin = New-Object System.Windows.Forms.Label
-        $lblPin.Text = "PIN :"
-        $lblPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
-        $lblPin.ForeColor = [System.Drawing.Color]::White
-        $lblPin.AutoSize = $true
-        $lblPin.Location = New-Object System.Drawing.Point(50, 440)
-        $lockForm.Controls.Add($lblPin)
-
-        $tbPin = New-Object System.Windows.Forms.TextBox
-        $tbPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Regular)
-        $tbPin.Size = New-Object System.Drawing.Size(250, 35)
-        $tbPin.Location = New-Object System.Drawing.Point(180, 437)
-        $tbPin.UseSystemPasswordChar = $true
-        $lockForm.Controls.Add($tbPin)
-
-        $btnSubmit = New-Object System.Windows.Forms.Button
-        $btnSubmit.Text = "TA解除を実行"
-        $btnSubmit.Font = New-Object System.Drawing.Font("Meiryo UI", 14, [System.Drawing.FontStyle]::Bold)
-        $btnSubmit.Size = New-Object System.Drawing.Size(200, 40)
-        $btnSubmit.Location = New-Object System.Drawing.Point(450, 435)
-        $btnSubmit.BackColor = [System.Drawing.Color]::White
-        $btnSubmit.ForeColor = [System.Drawing.Color]::Black
-        $lockForm.Controls.Add($btnSubmit)
-
-        $btnPeek = New-Object System.Windows.Forms.Button
-        $btnPeek.Text = "背景透過"
-        $btnPeek.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Bold)
-        $btnPeek.Size = New-Object System.Drawing.Size(240, 40)
-        $btnPeek.Location = New-Object System.Drawing.Point(670, 435)
-        $btnPeek.BackColor = [System.Drawing.Color]::Gray
-        $btnPeek.ForeColor = [System.Drawing.Color]::White
-        $lockForm.Controls.Add($btnPeek)
-
-        $btnPeek.Add_MouseDown({ $lockForm.Opacity = 0.1 })
-        $btnPeek.Add_MouseUp({ $lockForm.Opacity = 1.0 })
-        $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 }) 
-
-        $lockForm.AcceptButton = $btnSubmit
+        $btnUnlock = New-Object System.Windows.Forms.Button
+        $btnUnlock.Text = "TA解除を実行"
+        $btnUnlock.Font = New-Object System.Drawing.Font("Meiryo UI", 14, [System.Drawing.FontStyle]::Bold)
+        $btnUnlock.Size = New-Object System.Drawing.Size(260, 55)
+        $btnUnlock.Location = New-Object System.Drawing.Point(50, 290)
+        $lockForm.Controls.Add($btnUnlock)
 
         $script:isLocked = $true
         $script:unlockBusy = $false
 
-        $btnSubmit.Add_Click({
+        $btnUnlock.Add_Click({
             if ($script:unlockBusy) { return }
-            
-            if ($REQUIRE_PIN -and [string]::IsNullOrWhiteSpace($tbPin.Text)) {
-                $lblStatus.Text = "状態: PINを入力してください"
-                return
-            }
-
             $script:unlockBusy = $true
-            $btnSubmit.Enabled = $false 
-            $tbPin.Enabled = $false
-            
             try {
+                $pin = ""
+                if ($REQUIRE_PIN) {
+                    $pin = Show-PinDialog -Title "TA PIN入力" -Message "TA PINを入力してください"
+                    if ($null -eq $pin) {
+                        $lblStatus.Text = "状態: キャンセルされました"
+                        return
+                    }
+                }
+
                 $lblStatus.Text = "状態: 検証中..."
-                $lblStatus.ForeColor = [System.Drawing.Color]::Yellow
                 [System.Windows.Forms.Application]::DoEvents()
 
-                if (Test-TaUsbUnlock -Pin $tbPin.Text) {
+                if (Test-TaUsbUnlock -Pin $pin) {
                     $lblStatus.Text = "状態: 解除成功"
-                    $lblStatus.ForeColor = [System.Drawing.Color]::LimeGreen
                     $script:isLocked = $false
-                    Start-Sleep -Milliseconds 500
                     $lockForm.Close()
                 } else {
-                    $lblStatus.Text = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
-                    $lblStatus.ForeColor = [System.Drawing.Color]::LightPink
-                    $tbPin.Text = "" 
+                    $lblStatus.Text = "状態: 解除失敗（USB / PIN / 証明書を確認）"
                 }
             } finally {
                 $script:unlockBusy = $false
-                $btnSubmit.Enabled = $true
-                $tbPin.Enabled = $true
-                $tbPin.Focus()
             }
         })
 
@@ -229,22 +218,21 @@ public class Win32 {
             if ($script:isLocked) { $_.Cancel = $true }
         })
 
-        $lockForm.Add_Shown({
-            $lockForm.Activate()
-            [Win32]::SetForegroundWindow($lockForm.Handle)
-            $tbPin.Select()
-            $tbPin.Focus()
-        })
-
         [void]$lockForm.ShowDialog()
     }
 
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化
+    # 保存先の決定と当日データチェック
     # ==========================================
     $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+    $today = (Get-Date).Date
+
+    # フォルダ名が規定フォーマットで，かつ作成日または更新日が「今日」のもののみ引き継ぐ
     $subDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match "^([0-9]{8})_([0-9]{8})$" } |
+        Where-Object { 
+            $_.Name -match "^([0-9]{8})_([0-9]{8})$" -and
+            ($_.CreationTime.Date -eq $today -or $_.LastWriteTime.Date -eq $today)
+        } |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
 
@@ -257,15 +245,19 @@ public class Win32 {
         $studentId = "Unknown"
     }
 
-    $script:captureCount = @(Get-ChildItem -Path $saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count
+    # 初期枚数を算出（「今日」撮影された画像ファイルのみをカウント対象にする）
+    $captureCount = @(Get-ChildItem -Path $saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue |
+        Where-Object { $_.CreationTime.Date -eq $today -or $_.LastWriteTime.Date -eq $today }).Count
 
-    # バーの横幅計算
+    # ==========================================
+    # 文字サイズを自動計算してバーの幅を決定
+    # ==========================================
     $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
-    $dummyText = "  [$studentId] 試験中: 9999枚 (23:59)  " 
+    $dummyText = "  [$studentId] 試験中: 999枚 (23:59)  "
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 10
 
-    $initialText = "[$studentId] 試験中: $($script:captureCount)枚 ($(Get-Date -Format 'HH:mm'))"
+    $initialText = "[$studentId] 試験中: $captureCount枚 ($(Get-Date -Format 'HH:mm'))"
 
     $barForm = New-Object System.Windows.Forms.Form
     $barForm.Size = New-Object System.Drawing.Size($formWidth, 22)
@@ -291,11 +283,13 @@ public class Win32 {
     [void][Win32]::SetWindowLong($barForm.Handle, [Win32]::GWL_EXSTYLE, $style -bor [Win32]::WS_EX_LAYERED -bor [Win32]::WS_EX_TRANSPARENT)
     [void][Win32]::SetLayeredWindowAttributes($barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
 
+    # ==========================================
     # ホバー時の半透明化タイマー
+    # ==========================================
     $hoverTimer = New-Object System.Windows.Forms.Timer
     $hoverTimer.Interval = 100 
     $hoverTimer.Add_Tick({
-        [void][Win32]::SetWindowPos($barForm.Handle, -1, 0, 0, 0, 0, 19)
+        [void][Win32]::SetWindowPos($barForm.Handle, -1, 0, 0, 0, 0, 3) # 常に最前面を維持
         $pt = [System.Windows.Forms.Cursor]::Position
         $isHover = ($pt.X -ge $barForm.Left -and $pt.X -le ($barForm.Left + $barForm.Width) -and $pt.Y -ge $barForm.Top -and $pt.Y -le ($barForm.Top + $barForm.Height))
         if ($isHover) {
@@ -307,19 +301,17 @@ public class Win32 {
     $hoverTimer.Start()
 
     # ==========================================
-    # 画面キャプチャ専用タイマー
+    # メイン監視ループ
     # ==========================================
-    $script:nextCaptureTime = Get-Date
-    $captureTimer = New-Object System.Windows.Forms.Timer
-    $captureTimer.Interval = 1000 # 1秒ごとに実行
-    $captureTimer.Add_Tick({
-        $now = Get-Date
-        
-        # 毎秒必ずラベルの時刻と枚数を更新（時計をフリーズさせない）
-        $label.Text = "[$studentId] 試験中: $($script:captureCount)枚 ($($now.ToString('HH:mm')))"
+    $nextCaptureTime = Get-Date
+    $nextPingTime = Get-Date
+    $lastLockTriggeredAt = [datetime]::MinValue
 
-        # キャプチャ予定時刻を過ぎていたら撮影開始
-        if ($now -ge $script:nextCaptureTime) {
+    while ($true) {
+        $now = Get-Date
+
+        # --- 1. 画面キャプチャ処理 (マルチモニター対応) ---
+        if ($now -ge $nextCaptureTime) {
             try {
                 $minX = 0; $minY = 0; $maxX = 0; $maxY = 0
                 foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
@@ -330,6 +322,7 @@ public class Win32 {
                 }
                 $totalW = $maxX - $minX; $totalH = $maxY - $minY
                 
+                # 取得失敗時のフォールバック (プライマリ画面のみ)
                 if ($totalW -eq 0 -or $totalH -eq 0) {
                     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
                     $totalW = $bounds.Width; $totalH = $bounds.Height
@@ -341,46 +334,41 @@ public class Win32 {
                 $g = [System.Drawing.Graphics]::FromImage($bmp)
                 $g.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
 
-                # 枚数カウントアップと保存
-                $script:captureCount++
-                $timestamp = $now.ToString('HHmmss')
-                $countStr = "{0:D3}" -f $script:captureCount
+                $captureCount++
+                $timestamp = Get-Date -Format 'HHmmss'
+                $countStr = "{0:D3}" -f $captureCount
                 $fileName = "${studentId}_${countStr}_${timestamp}.jpg"
                 $filePath = Join-Path $saveDir $fileName
                 $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
 
-                # 撮影直後にもう一度ラベル更新
-                $label.Text = "[$studentId] 試験中: $($script:captureCount)枚 ($($now.ToString('HH:mm')))"
+                $label.Text = "[$studentId] 試験中: $captureCount枚 ($(Get-Date -Format 'HH:mm'))"
 
                 $g.Dispose(); $bmp.Dispose()
             } catch {
-                # エラーが起きてもシステムを止めず，ログだけ吐いて次回の撮影を予約する
-                "Capture Error at $($now.ToString()): $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append -Encoding UTF8
+                "Capture Error at $(Get-Date): $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append -Encoding UTF8
             }
 
-            # 次回の撮影時間をランダム設定
-            $script:nextCaptureTime = $now.AddSeconds((Get-Random -Minimum 1 -Maximum 60))
+            # ランダム間隔の撮影 (1～60秒)
+            $nextCaptureTime = (Get-Date).AddSeconds((Get-Random -Minimum 1 -Maximum 60))
         }
-    })
-    $captureTimer.Start()
 
-    # ==========================================
-    # メインループ (ネットワーク監視専用)
-    # ==========================================
-    $nextPingTime = Get-Date
-
-    while ($true) {
-        $now = Get-Date
+        # --- 2. ネットワーク監視処理 ---
         if ($now -ge $nextPingTime) {
             try {
-                if (Test-InternetConnectivity) {
-                    "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$saveDir\network_warning.log" -Append -Encoding UTF8
-                    Show-LockScreen
+                $inCooldown = (($now - $lastLockTriggeredAt).TotalSeconds -lt $lockCooldownSeconds)
+                if (-not $inCooldown) {
+                    if (Test-InternetConnectivity) {
+                        "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$saveDir\network_warning.log" -Append -Encoding UTF8
+                        $lastLockTriggeredAt = Get-Date
+                        Show-LockScreen
+                    }
                 }
             } catch {}
             
+            # ランダム間隔の通信チェック (1～11秒)
             $nextPingTime = (Get-Date).AddSeconds((Get-Random -Minimum 1 -Maximum 11))
         }
+
         [System.Windows.Forms.Application]::DoEvents()
         Start-Sleep -Milliseconds 500
     }

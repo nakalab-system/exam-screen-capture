@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 # DPI対応
 $pinvoke = @"
@@ -110,6 +110,7 @@ public class Win32 {
         $lockForm.TopMost = $true
         $lockForm.BackColor = [System.Drawing.Color]::DarkRed
         $lockForm.ShowInTaskbar = $false
+        $lockForm.Opacity = 1.0
 
         $lblTitle = New-Object System.Windows.Forms.Label
         $lblTitle.Text = "【警告】インターネット接続を検知しました"
@@ -182,7 +183,7 @@ public class Win32 {
 
         $btnPeek.Add_MouseDown({ $lockForm.Opacity = 0.1 })
         $btnPeek.Add_MouseUp({ $lockForm.Opacity = 1.0 })
-        $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 }) 
+        $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 })
 
         $lockForm.AcceptButton = $btnSubmit
 
@@ -191,16 +192,16 @@ public class Win32 {
 
         $btnSubmit.Add_Click({
             if ($script:unlockBusy) { return }
-            
+
             if ($REQUIRE_PIN -and [string]::IsNullOrWhiteSpace($tbPin.Text)) {
                 $lblStatus.Text = "状態: PINを入力してください"
                 return
             }
 
             $script:unlockBusy = $true
-            $btnSubmit.Enabled = $false 
+            $btnSubmit.Enabled = $false
             $tbPin.Enabled = $false
-            
+
             try {
                 $lblStatus.Text = "状態: 検証中..."
                 $lblStatus.ForeColor = [System.Drawing.Color]::Yellow
@@ -215,7 +216,7 @@ public class Win32 {
                 } else {
                     $lblStatus.Text = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
                     $lblStatus.ForeColor = [System.Drawing.Color]::LightPink
-                    $tbPin.Text = "" 
+                    $tbPin.Text = ""
                 }
             } finally {
                 $script:unlockBusy = $false
@@ -272,7 +273,7 @@ public class Win32 {
     # バーの横幅計算・UI初期化
     # ==========================================
     $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
-    $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  " 
+    $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  "
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 30
 
@@ -304,7 +305,7 @@ public class Win32 {
 
     # ホバー時の半透明化タイマー (Start-Sleep排除により動作が格段に滑らかになります)
     $hoverTimer = New-Object System.Windows.Forms.Timer
-    $hoverTimer.Interval = 100 
+    $hoverTimer.Interval = 100
     $hoverTimer.Add_Tick({
         [void][Win32]::SetWindowPos($script:barForm.Handle, -1, 0, 0, 0, 0, 19)
         $pt = [System.Windows.Forms.Cursor]::Position
@@ -325,7 +326,7 @@ public class Win32 {
     $captureTimer.Interval = 1000
     $captureTimer.Add_Tick({
         $now = Get-Date
-        
+
         $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
 
         if ($now -ge $script:nextCaptureTime) {
@@ -338,13 +339,13 @@ public class Win32 {
                     if (($screen.Bounds.Y + $screen.Bounds.Height) -gt $maxY) { $maxY = ($screen.Bounds.Y + $screen.Bounds.Height) }
                 }
                 $totalW = $maxX - $minX; $totalH = $maxY - $minY
-                
+
                 if ($totalW -eq 0 -or $totalH -eq 0) {
                     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
                     $totalW = $bounds.Width; $totalH = $bounds.Height
                     $minX = $bounds.X; $minY = $bounds.Y
                 }
-                
+
                 $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
                 $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
                 $g = [System.Drawing.Graphics]::FromImage($bmp)
@@ -372,18 +373,23 @@ public class Win32 {
     # ==========================================
     # ネットワーク監視専用タイマー
     # ==========================================
+    $script:isLockScreenVisible = $false
     $script:nextPingTime = Get-Date
     $networkTimer = New-Object System.Windows.Forms.Timer
     $networkTimer.Interval = 500 # 0.5秒ごとにチェックの機会を伺う
     $networkTimer.Add_Tick({
         $now = Get-Date
-        if ($now -ge $script:nextPingTime) {
+        if ($now -ge $script:nextPingTime -and -not $script:isLockScreenVisible) {
             try {
                 if (Test-InternetConnectivity) {
                     "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$script:saveDir\network_warning.log" -Append -Encoding UTF8
-                    Show-LockScreen
+                    $script:isLockScreenVisible = $true   # ロック画面を開く前にフラグを立てる
+                    Show-LockScreen                        # ShowDialog() がここでブロック
+                    $script:isLockScreenVisible = $false  # 閉じたらフラグを下ろす
                 }
-            } catch {}
+            } catch {
+                $script:isLockScreenVisible = $false      # 例外時も確実にフラグを解除
+            }
             $script:nextPingTime = (Get-Date).AddSeconds((Get-Random -Minimum 1 -Maximum 11))
         }
     })

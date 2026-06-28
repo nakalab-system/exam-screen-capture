@@ -240,52 +240,42 @@ public class Win32 {
     }
 
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化 (フォルダ名から日付を直接解析する最強ロジック)
+    # ディレクトリ・学籍番号等の初期化 (文字列による完全一致ロジック)
     # ==========================================
     $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-    $todayDate = (Get-Date).Date
-
+    
+    # 完全に「今日の年月日文字列」のみを信用する
+    $todayStr = Get-Date -Format "yyyyMMdd"
     $validFolders = @()
     $allFolders = @(Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue)
 
-    # まず、フォルダ名に「8桁の日付（YYYYMMDD）」が含まれているものを探す
     foreach ($f in $allFolders) {
-        # 202xxxxx 形式の8桁の数字を抽出
-        if ($f.Name -match "(20[2-9][0-9][0-1][0-9][0-3][0-9])") {
-            try {
-                $parsedDate = [datetime]::ParseExact($matches[1], "yyyyMMdd", $null)
-                $diffDays = ($todayDate - $parsedDate.Date).TotalDays
-                # その日付が「今日」または「昨日(0時またぎ用)」の場合のみ有効リストに追加
-                if ($diffDays -eq 0 -or $diffDays -eq 1) {
-                    $validFolders += $f
-                }
-            } catch {}
+        # 1. フォルダ名が「学籍番号_今日の日付」か？
+        if ($f.Name -match "^([A-Za-z0-9]+)_($todayStr)$") {
+            $matchedStudentId = $matches[1]
+            
+            # 2. その中に「学籍番号_今日の日付_時刻(6桁).zip」が存在するか？
+            $zips = @(Get-ChildItem -Path $f.FullName -Filter "*.zip" -File -ErrorAction SilentlyContinue | 
+                      Where-Object { $_.Name -match "^${matchedStudentId}_${todayStr}_[0-9]{6}\.zip$" })
+            
+            # 両方の文字列条件をクリアしたフォルダだけを「本日の正規フォルダ」と認定する
+            if ($zips.Count -gt 0) {
+                $validFolders += $f
+            }
         }
     }
 
-    $subDir = $null
     if ($validFolders.Count -gt 0) {
-        # 正しい日付が含まれているフォルダの中で、一番新しく操作されたものを採用
+        # 万が一複数見つかった場合は一番新しいもの（再起動などを想定）を引き継ぐ
         $subDir = $validFolders | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    } else {
-        # フォルダ名に一切日付が入っていないシステム仕様の場合の最終手段
-        $subDir = $allFolders | Where-Object { $_.LastWriteTime.Date -eq $todayDate } |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    }
-
-    # 学籍番号の抽出と保存先の決定
-    if ($subDir) {
         $script:saveDir = $subDir.FullName
         $script:studentId = $subDir.Name.Split('_')[0]
-        if ([string]::IsNullOrWhiteSpace($script:studentId)) { $script:studentId = $subDir.Name }
     } else {
         $script:saveDir = $script:baseDir
         $script:studentId = "Unknown"
     }
 
-    # 画像のカウント処理
-    # 特定されたフォルダは「今日の試験用フォルダ」であることが保証されているため、
-    # フォルダ内のJPGファイルを純粋に全カウントすればOK。（古いフォルダは上で弾かれているため混ざらない）
+    # フォルダが完全に「今日」のものと保証されているため、単純に中のjpgをカウントするだけでOK
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count
 
     # ==========================================

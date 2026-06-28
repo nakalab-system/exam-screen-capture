@@ -240,49 +240,54 @@ public class Win32 {
     }
 
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化 (文字列による完全一致ロジック)
+    # ディレクトリ・学籍番号等の初期化 (フォルダ名・ZIP名による完全一致ロジック)
     # ==========================================
     $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
     
-    # 完全に「今日の年月日文字列」のみを信用する
+    # 完全に「今日の日付（YYYYMMDD）」の文字列のみを使用する（過去の許容を一切廃止）
     $todayStr = Get-Date -Format "yyyyMMdd"
-    $validFolders = @()
+    $targetFolder = $null
+    $foundStudentId = "Unknown"
+
     $allFolders = @(Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue)
 
     foreach ($f in $allFolders) {
-        # 1. フォルダ名が「学籍番号_今日の日付」か？
+        # 1. フォルダ名が「学籍番号_今日の日付(8桁)」に完全に一致するか？
         if ($f.Name -match "^([A-Za-z0-9]+)_($todayStr)$") {
-            $matchedStudentId = $matches[1]
-            
-            # 2. その中に「学籍番号_今日の日付_時刻(6桁).zip」が存在するか？
-            $zips = @(Get-ChildItem -Path $f.FullName -Filter "*.zip" -File -ErrorAction SilentlyContinue | 
-                      Where-Object { $_.Name -match "^${matchedStudentId}_${todayStr}_[0-9]{6}\.zip$" })
-            
-            # 両方の文字列条件をクリアしたフォルダだけを「本日の正規フォルダ」と認定する
+            $sid = $matches[1]
+
+            # 2. そのフォルダ内に「学籍番号_今日の日付_時刻(6桁).zip」が存在するか？
+            $zips = @(Get-ChildItem -Path $f.FullName -Filter "${sid}_${todayStr}_*.zip" -File -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -match "^${sid}_${todayStr}_[0-9]{6}\.zip$" })
+
+            # フォルダ名もZIP名も完全に今日の日付を満たす場合のみ、「本日の正規フォルダ」とする
             if ($zips.Count -gt 0) {
-                $validFolders += $f
+                $targetFolder = $f
+                $foundStudentId = $sid
+                break
             }
         }
     }
 
-    if ($validFolders.Count -gt 0) {
-        # 万が一複数見つかった場合は一番新しいもの（再起動などを想定）を引き継ぐ
-        $subDir = $validFolders | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        $script:saveDir = $subDir.FullName
-        $script:studentId = $subDir.Name.Split('_')[0]
+    # 保存先と学籍番号の決定
+    if ($targetFolder) {
+        $script:saveDir = $targetFolder.FullName
+        $script:studentId = $foundStudentId
     } else {
+        # 該当しない場合（テスト開始前など）はベースディレクトリを利用し、学籍番号はUnknownとする
         $script:saveDir = $script:baseDir
         $script:studentId = "Unknown"
     }
 
-    # フォルダが完全に「今日」のものと保証されているため、単純に中のjpgをカウントするだけでOK
-    [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count
+    # 枚数カウント：学籍番号に合致する画像のみをカウントし、過去のUnknownデータなどを誤検知させない
+    [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "${script:studentId}_*.jpg" -File -ErrorAction SilentlyContinue).Count
+
 
     # ==========================================
     # バーの横幅計算・UI初期化
     # ==========================================
     $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
-    $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  " 
+    $dummyText = "  [$($script:studentId)] 試験中: 999枚 (23:59)  " 
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 30
 

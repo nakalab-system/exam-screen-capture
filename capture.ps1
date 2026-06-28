@@ -227,7 +227,7 @@ public class Win32 {
     $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
     $today = (Get-Date).Date
 
-    # フォルダ名が規定フォーマットで，かつ作成日または更新日が「今日」のもののみ引き継ぐ
+    # フォルダ名が規定フォーマットで、かつ作成日または更新日が「今日」のもののみ引き継ぐ
     $subDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { 
             $_.Name -match "^([0-9]{8})_([0-9]{8})$" -and
@@ -256,8 +256,7 @@ public class Win32 {
     $dummyText = "  [$studentId] 試験中: 999枚 (23:59)  "
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 10
-
-    $initialText = "[$studentId] 試験中: $captureCount枚 ($(Get-Date -Format 'HH:mm'))"
+    $initialText = "[$studentId] 試験中: $($captureCount)枚 ($(Get-Date -Format 'HH:mm'))"
 
     $barForm = New-Object System.Windows.Forms.Form
     $barForm.Size = New-Object System.Drawing.Size($formWidth, 22)
@@ -340,8 +339,7 @@ public class Win32 {
                 $fileName = "${studentId}_${countStr}_${timestamp}.jpg"
                 $filePath = Join-Path $saveDir $fileName
                 $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
-
-                $label.Text = "[$studentId] 試験中: $captureCount枚 ($(Get-Date -Format 'HH:mm'))"
+                $label.Text = "[$studentId] 試験中: $($captureCount)枚 ($(Get-Date -Format 'HH:mm'))"
 
                 $g.Dispose(); $bmp.Dispose()
             } catch {

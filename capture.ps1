@@ -240,38 +240,62 @@ public class Win32 {
     }
 
     # ==========================================
-    # ディレクトリ・学籍番号等の初期化 (「作成日時」のみで判定する安全なロジック)
+    # ディレクトリ・学籍番号等の初期化 (フォルダ名から日付を直接解析する最強ロジック)
     # ==========================================
     $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
     $todayDate = (Get-Date).Date
 
-    # 過去のファイルを開いて「更新日時(LastWriteTime)」が変わってしまっても影響を受けないよう、
-    # 純粋に「今日作成された(CreationTime)」フォルダの中で最新のものだけを引き継ぐ
-    $subDir = Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.CreationTime.Date -eq $todayDate } |
-        Sort-Object CreationTime -Descending |
-        Select-Object -First 1
+    $validFolders = @()
+    $allFolders = @(Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue)
 
+    # まず、フォルダ名に「8桁の日付（YYYYMMDD）」が含まれているものを探す
+    foreach ($f in $allFolders) {
+        # 202xxxxx 形式の8桁の数字を抽出
+        if ($f.Name -match "(20[2-9][0-9][0-1][0-9][0-3][0-9])") {
+            try {
+                $parsedDate = [datetime]::ParseExact($matches[1], "yyyyMMdd", $null)
+                $diffDays = ($todayDate - $parsedDate.Date).TotalDays
+                # その日付が「今日」または「昨日(0時またぎ用)」の場合のみ有効リストに追加
+                if ($diffDays -eq 0 -or $diffDays -eq 1) {
+                    $validFolders += $f
+                }
+            } catch {}
+        }
+    }
+
+    $subDir = $null
+    if ($validFolders.Count -gt 0) {
+        # 正しい日付が含まれているフォルダの中で、一番新しく操作されたものを採用
+        $subDir = $validFolders | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    } else {
+        # フォルダ名に一切日付が入っていないシステム仕様の場合の最終手段
+        $subDir = $allFolders | Where-Object { $_.LastWriteTime.Date -eq $todayDate } |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    }
+
+    # 学籍番号の抽出と保存先の決定
     if ($subDir) {
         $script:saveDir = $subDir.FullName
-        # 「_」がある場合はその前までを学籍番号とし、無い場合はフォルダ名をそのまま扱う
         $script:studentId = $subDir.Name.Split('_')[0]
-        if ([string]::IsNullOrWhiteSpace($script:studentId)) {
-            $script:studentId = $subDir.Name
-        }
+        if ([string]::IsNullOrWhiteSpace($script:studentId)) { $script:studentId = $subDir.Name }
     } else {
         $script:saveDir = $script:baseDir
         $script:studentId = "Unknown"
     }
 
-    [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue | 
-        Where-Object { $_.CreationTime.Date -eq $todayDate }).Count
+    # 画像のカウント処理
+    # 特定されたフォルダは「今日の試験用フォルダ」であることが保証されているため、
+    # フォルダ内のJPGファイルを純粋に全カウントすればOK。（古いフォルダは上で弾かれているため混ざらない）
+    [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "*.jpg" -ErrorAction SilentlyContinue).Count
 
-    # バーの横幅計算 (文字が途切れないよう余裕を+30に拡大)
+    # ==========================================
+    # バーの横幅計算・UI初期化
+    # ==========================================
     $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
     $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  " 
     $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
     $formWidth = $textSize.Width + 30
+
     $initialText = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, (Get-Date -Format 'HH:mm')
 
     $script:barForm = New-Object System.Windows.Forms.Form
@@ -321,6 +345,7 @@ public class Win32 {
     $captureTimer.Interval = 1000 # 1秒ごとに実行
     $captureTimer.Add_Tick({
         $now = Get-Date
+        
         $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
 
         # キャプチャ予定時刻を過ぎていたら撮影開始
@@ -359,7 +384,6 @@ public class Win32 {
 
                 $g.Dispose(); $bmp.Dispose()
             } catch {
-                # エラーが起きてもシステムを止めず，ログだけ吐いて次回の撮影を予約する
                 "Capture Error at $($now.ToString()): $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append -Encoding UTF8
             }
 

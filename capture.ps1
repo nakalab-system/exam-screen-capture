@@ -102,141 +102,151 @@ public class Win32 {
         return $false
     }
 
+    $script:lockScreenOpen = $false
+
     function Show-LockScreen {
-        $lockForm = New-Object System.Windows.Forms.Form
-        $lockForm.Size = New-Object System.Drawing.Size(980, 600)
-        $lockForm.StartPosition = "CenterScreen"
-        $lockForm.FormBorderStyle = "None"
-        $lockForm.TopMost = $true
-        $lockForm.BackColor = [System.Drawing.Color]::DarkRed
-        $lockForm.ShowInTaskbar = $false
+        # 既にロック画面が開いている場合は何もしない(修正点1: 多重表示ガード)
+        if ($script:lockScreenOpen) { return }
+        $script:lockScreenOpen = $true
 
-        $lblTitle = New-Object System.Windows.Forms.Label
-        $lblTitle.Text = "【警告】インターネット接続を検知しました"
-        $lblTitle.Font = New-Object System.Drawing.Font("Meiryo UI", 28, [System.Drawing.FontStyle]::Bold)
-        $lblTitle.ForeColor = [System.Drawing.Color]::Yellow
-        $lblTitle.AutoSize = $true
-        $lblTitle.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblTitle.Location = New-Object System.Drawing.Point(45, 40)
-        $lockForm.Controls.Add($lblTitle)
+        try {
+            $lockForm = New-Object System.Windows.Forms.Form
+            $lockForm.Size = New-Object System.Drawing.Size(980, 600)
+            $lockForm.StartPosition = "CenterScreen"
+            $lockForm.FormBorderStyle = "None"
+            $lockForm.TopMost = $true
+            $lockForm.BackColor = [System.Drawing.Color]::DarkRed
+            $lockForm.ShowInTaskbar = $false
 
-        $lblMsgStudent = New-Object System.Windows.Forms.Label
-        $lblMsgStudent.Text = "ただちにTA（試験監督）を呼んでください．`r`n※TAが到着するまで，PCには一切触れないでください．"
-        $lblMsgStudent.Font = New-Object System.Drawing.Font("Meiryo UI", 18, [System.Drawing.FontStyle]::Bold)
-        $lblMsgStudent.ForeColor = [System.Drawing.Color]::White
-        $lblMsgStudent.AutoSize = $true
-        $lblMsgStudent.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblMsgStudent.Location = New-Object System.Drawing.Point(50, 140)
-        $lockForm.Controls.Add($lblMsgStudent)
+            $lblTitle = New-Object System.Windows.Forms.Label
+            $lblTitle.Text = "【警告】インターネット接続を検知しました"
+            $lblTitle.Font = New-Object System.Drawing.Font("Meiryo UI", 28, [System.Drawing.FontStyle]::Bold)
+            $lblTitle.ForeColor = [System.Drawing.Color]::Yellow
+            $lblTitle.AutoSize = $true
+            $lblTitle.MaximumSize = New-Object System.Drawing.Size(880, 0)
+            $lblTitle.Location = New-Object System.Drawing.Point(45, 40)
+            $lockForm.Controls.Add($lblTitle)
 
-        $lblMsgTa = New-Object System.Windows.Forms.Label
-        $lblMsgTa.Text = "【TA用操作ガイド】`r`n・「背景を透かす」を長押しすると，背後の画面状況（不正の有無など）を確認できます．`r`n・Wi-Fi切断後にPIN解除をしてください．"
-        $lblMsgTa.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
-        $lblMsgTa.ForeColor = [System.Drawing.Color]::LightYellow
-        $lblMsgTa.AutoSize = $true
-        $lblMsgTa.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblMsgTa.Location = New-Object System.Drawing.Point(50, 240)
-        $lockForm.Controls.Add($lblMsgTa)
+            $lblMsgStudent = New-Object System.Windows.Forms.Label
+            $lblMsgStudent.Text = "ただちにTA（試験監督）を呼んでください．`r`n※TAが到着するまで，PCには一切触れないでください．"
+            $lblMsgStudent.Font = New-Object System.Drawing.Font("Meiryo UI", 18, [System.Drawing.FontStyle]::Bold)
+            $lblMsgStudent.ForeColor = [System.Drawing.Color]::White
+            $lblMsgStudent.AutoSize = $true
+            $lblMsgStudent.MaximumSize = New-Object System.Drawing.Size(880, 0)
+            $lblMsgStudent.Location = New-Object System.Drawing.Point(50, 140)
+            $lockForm.Controls.Add($lblMsgStudent)
 
-        $lblStatus = New-Object System.Windows.Forms.Label
-        $lblStatus.Text = "状態: TA用USB待機中"
-        $lblStatus.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
-        $lblStatus.ForeColor = [System.Drawing.Color]::LightGray
-        $lblStatus.AutoSize = $true
-        $lblStatus.MaximumSize = New-Object System.Drawing.Size(880, 0)
-        $lblStatus.Location = New-Object System.Drawing.Point(50, 360)
-        $lockForm.Controls.Add($lblStatus)
+            $lblMsgTa = New-Object System.Windows.Forms.Label
+            $lblMsgTa.Text = "【TA用操作ガイド】`r`n・「背景を透かす」を長押しすると，背後の画面状況（不正の有無など）を確認できます．`r`n・Wi-Fi切断後にPIN解除をしてください．"
+            $lblMsgTa.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
+            $lblMsgTa.ForeColor = [System.Drawing.Color]::LightYellow
+            $lblMsgTa.AutoSize = $true
+            $lblMsgTa.MaximumSize = New-Object System.Drawing.Size(880, 0)
+            $lblMsgTa.Location = New-Object System.Drawing.Point(50, 240)
+            $lockForm.Controls.Add($lblMsgTa)
 
-        $lblPin = New-Object System.Windows.Forms.Label
-        $lblPin.Text = "PIN :"
-        $lblPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
-        $lblPin.ForeColor = [System.Drawing.Color]::White
-        $lblPin.AutoSize = $true
-        $lblPin.Location = New-Object System.Drawing.Point(50, 440)
-        $lockForm.Controls.Add($lblPin)
+            $lblStatus = New-Object System.Windows.Forms.Label
+            $lblStatus.Text = "状態: TA用USB待機中"
+            $lblStatus.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Regular)
+            $lblStatus.ForeColor = [System.Drawing.Color]::LightGray
+            $lblStatus.AutoSize = $true
+            $lblStatus.MaximumSize = New-Object System.Drawing.Size(880, 0)
+            $lblStatus.Location = New-Object System.Drawing.Point(50, 360)
+            $lockForm.Controls.Add($lblStatus)
 
-        $tbPin = New-Object System.Windows.Forms.TextBox
-        $tbPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Regular)
-        $tbPin.Size = New-Object System.Drawing.Size(250, 35)
-        $tbPin.Location = New-Object System.Drawing.Point(180, 437)
-        $tbPin.UseSystemPasswordChar = $true
-        $lockForm.Controls.Add($tbPin)
+            $lblPin = New-Object System.Windows.Forms.Label
+            $lblPin.Text = "PIN :"
+            $lblPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Bold)
+            $lblPin.ForeColor = [System.Drawing.Color]::White
+            $lblPin.AutoSize = $true
+            $lblPin.Location = New-Object System.Drawing.Point(50, 440)
+            $lockForm.Controls.Add($lblPin)
 
-        $btnSubmit = New-Object System.Windows.Forms.Button
-        $btnSubmit.Text = "TA解除を実行"
-        $btnSubmit.Font = New-Object System.Drawing.Font("Meiryo UI", 14, [System.Drawing.FontStyle]::Bold)
-        $btnSubmit.Size = New-Object System.Drawing.Size(200, 40)
-        $btnSubmit.Location = New-Object System.Drawing.Point(450, 435)
-        $btnSubmit.BackColor = [System.Drawing.Color]::White
-        $btnSubmit.ForeColor = [System.Drawing.Color]::Black
-        $lockForm.Controls.Add($btnSubmit)
+            $tbPin = New-Object System.Windows.Forms.TextBox
+            $tbPin.Font = New-Object System.Drawing.Font("Meiryo UI", 16, [System.Drawing.FontStyle]::Regular)
+            $tbPin.Size = New-Object System.Drawing.Size(250, 35)
+            $tbPin.Location = New-Object System.Drawing.Point(180, 437)
+            $tbPin.UseSystemPasswordChar = $true
+            $lockForm.Controls.Add($tbPin)
 
-        $btnPeek = New-Object System.Windows.Forms.Button
-        $btnPeek.Text = "背景透過"
-        $btnPeek.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Bold)
-        $btnPeek.Size = New-Object System.Drawing.Size(240, 40)
-        $btnPeek.Location = New-Object System.Drawing.Point(670, 435)
-        $btnPeek.BackColor = [System.Drawing.Color]::Gray
-        $btnPeek.ForeColor = [System.Drawing.Color]::White
-        $lockForm.Controls.Add($btnPeek)
+            $btnSubmit = New-Object System.Windows.Forms.Button
+            $btnSubmit.Text = "TA解除を実行"
+            $btnSubmit.Font = New-Object System.Drawing.Font("Meiryo UI", 14, [System.Drawing.FontStyle]::Bold)
+            $btnSubmit.Size = New-Object System.Drawing.Size(200, 40)
+            $btnSubmit.Location = New-Object System.Drawing.Point(450, 435)
+            $btnSubmit.BackColor = [System.Drawing.Color]::White
+            $btnSubmit.ForeColor = [System.Drawing.Color]::Black
+            $lockForm.Controls.Add($btnSubmit)
 
-        $btnPeek.Add_MouseDown({ $lockForm.Opacity = 0.1 })
-        $btnPeek.Add_MouseUp({ $lockForm.Opacity = 1.0 })
-        $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 }) 
+            $btnPeek = New-Object System.Windows.Forms.Button
+            $btnPeek.Text = "背景透過"
+            $btnPeek.Font = New-Object System.Drawing.Font("Meiryo UI", 12, [System.Drawing.FontStyle]::Bold)
+            $btnPeek.Size = New-Object System.Drawing.Size(240, 40)
+            $btnPeek.Location = New-Object System.Drawing.Point(670, 435)
+            $btnPeek.BackColor = [System.Drawing.Color]::Gray
+            $btnPeek.ForeColor = [System.Drawing.Color]::White
+            $lockForm.Controls.Add($btnPeek)
 
-        $lockForm.AcceptButton = $btnSubmit
+            $btnPeek.Add_MouseDown({ $lockForm.Opacity = 0.1 })
+            $btnPeek.Add_MouseUp({ $lockForm.Opacity = 1.0 })
+            $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 }) 
 
-        $script:isLocked = $true
-        $script:unlockBusy = $false
+            $lockForm.AcceptButton = $btnSubmit
 
-        $btnSubmit.Add_Click({
-            if ($script:unlockBusy) { return }
-            
-            if ($REQUIRE_PIN -and [string]::IsNullOrWhiteSpace($tbPin.Text)) {
-                $lblStatus.Text = "状態: PINを入力してください"
-                return
-            }
+            $script:isLocked = $true
+            $script:unlockBusy = $false
 
-            $script:unlockBusy = $true
-            $btnSubmit.Enabled = $false 
-            $tbPin.Enabled = $false
-            
-            try {
-                $lblStatus.Text = "状態: 検証中..."
-                $lblStatus.ForeColor = [System.Drawing.Color]::Yellow
-                [System.Windows.Forms.Application]::DoEvents()
-
-                if (Test-TaUsbUnlock -Pin $tbPin.Text) {
-                    $lblStatus.Text = "状態: 解除成功"
-                    $lblStatus.ForeColor = [System.Drawing.Color]::LimeGreen
-                    $script:isLocked = $false
-                    Start-Sleep -Milliseconds 500
-                    $lockForm.Close()
-                } else {
-                    $lblStatus.Text = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
-                    $lblStatus.ForeColor = [System.Drawing.Color]::LightPink
-                    $tbPin.Text = "" 
+            $btnSubmit.Add_Click({
+                if ($script:unlockBusy) { return }
+                
+                if ($REQUIRE_PIN -and [string]::IsNullOrWhiteSpace($tbPin.Text)) {
+                    $lblStatus.Text = "状態: PINを入力してください"
+                    return
                 }
-            } finally {
-                $script:unlockBusy = $false
-                $btnSubmit.Enabled = $true
-                $tbPin.Enabled = $true
+
+                $script:unlockBusy = $true
+                $btnSubmit.Enabled = $false 
+                $tbPin.Enabled = $false
+                
+                try {
+                    $lblStatus.Text = "状態: 検証中..."
+                    $lblStatus.ForeColor = [System.Drawing.Color]::Yellow
+                    [System.Windows.Forms.Application]::DoEvents()
+
+                    if (Test-TaUsbUnlock -Pin $tbPin.Text) {
+                        $lblStatus.Text = "状態: 解除成功"
+                        $lblStatus.ForeColor = [System.Drawing.Color]::LimeGreen
+                        $script:isLocked = $false
+                        Start-Sleep -Milliseconds 500
+                        $lockForm.Close()
+                    } else {
+                        $lblStatus.Text = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
+                        $lblStatus.ForeColor = [System.Drawing.Color]::LightPink
+                        $tbPin.Text = "" 
+                    }
+                } finally {
+                    $script:unlockBusy = $false
+                    $btnSubmit.Enabled = $true
+                    $tbPin.Enabled = $true
+                    $tbPin.Focus()
+                }
+            })
+
+            $lockForm.Add_FormClosing({
+                if ($script:isLocked) { $_.Cancel = $true }
+            })
+
+            $lockForm.Add_Shown({
+                $lockForm.Activate()
+                [Win32]::SetForegroundWindow($lockForm.Handle)
+                $tbPin.Select()
                 $tbPin.Focus()
-            }
-        })
+            })
 
-        $lockForm.Add_FormClosing({
-            if ($script:isLocked) { $_.Cancel = $true }
-        })
-
-        $lockForm.Add_Shown({
-            $lockForm.Activate()
-            [Win32]::SetForegroundWindow($lockForm.Handle)
-            $tbPin.Select()
-            $tbPin.Focus()
-        })
-
-        [void]$lockForm.ShowDialog()
+            [void]$lockForm.ShowDialog()
+        } finally {
+            $script:lockScreenOpen = $false
+        }
     }
 
 
@@ -379,7 +389,7 @@ public class Win32 {
         $now = Get-Date
         if ($now -ge $script:nextPingTime) {
             try {
-                if (Test-InternetConnectivity) {
+                if ((-not $script:lockScreenOpen) -and (Test-InternetConnectivity)) {
                     "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$script:saveDir\network_warning.log" -Append -Encoding UTF8
                     Show-LockScreen
                 }

@@ -7,6 +7,19 @@ Write-Host " 　　　提出準備　　　 "
 Write-Host "=========================================="
 Write-Host ""
 
+$subDirCheck = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($subDirCheck) {
+    $lockFlagPath = Join-Path $subDirCheck.FullName "LOCK_ACTIVE.flag"
+    if (Test-Path $lockFlagPath) {
+        Write-Host "==================================================" -ForegroundColor Red
+        Write-Host " [提出不可] インターネット接続の警告画面が表示中です．" -ForegroundColor Red
+        Write-Host " TAによる解除が完了するまで提出処理は実行できません．" -ForegroundColor Red
+        Write-Host " 画面の指示に従い，ただちにTAを呼んでください．" -ForegroundColor Red
+        Write-Host "=================================================" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # 偽装したプロセス名（WinSysMonitor.exe）を狙って停止する
 $processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'WinSysMonitor.exe' }
 if ($processes) {

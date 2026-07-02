@@ -105,9 +105,13 @@ public class Win32 {
     $script:lockScreenOpen = $false
 
     function Show-LockScreen {
-        # 既にロック画面が開いている場合は何もしない(修正点1: 多重表示ガード)
         if ($script:lockScreenOpen) { return }
         $script:lockScreenOpen = $true
+
+        $script:lockFlagPath = Join-Path $script:saveDir "LOCK_ACTIVE.flag"
+        try {
+            (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Out-File -FilePath $script:lockFlagPath -Encoding UTF8 -Force
+        } catch {}
 
         try {
             $lockForm = New-Object System.Windows.Forms.Form
@@ -246,6 +250,11 @@ public class Win32 {
             [void]$lockForm.ShowDialog()
         } finally {
             $script:lockScreenOpen = $false
+            try {
+                if (Test-Path $script:lockFlagPath) {
+                    Remove-Item $script:lockFlagPath -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
         }
     }
 
@@ -277,6 +286,11 @@ public class Win32 {
     $script:saveDir = $targetFolder.FullName
     $script:studentId = $foundStudentId
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "${script:studentId}_*.jpg" -File -ErrorAction SilentlyContinue).Count
+
+    $staleLockFlag = Join-Path $script:saveDir "LOCK_ACTIVE.flag"
+    if (Test-Path $staleLockFlag) {
+        Remove-Item $staleLockFlag -Force -ErrorAction SilentlyContinue
+    }
 
     # ==========================================
     # バーの横幅計算・UI初期化

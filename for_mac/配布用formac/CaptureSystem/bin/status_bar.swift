@@ -8,11 +8,51 @@ struct StatusPayload: Decodable {
     let mode: String
 }
 
+final class StatusBarView: NSView {
+    var displayText: String = ""
+    var textColor: NSColor = .systemYellow
+    var textFont: NSFont = .boldSystemFont(ofSize: 22)
+
+    override var isOpaque: Bool {
+        false
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+
+        guard !displayText.isEmpty else {
+            return
+        }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        paragraphStyle.lineBreakMode = .byClipping
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: textFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        let textSize = (displayText as NSString).size(withAttributes: attributes)
+        let textRect = NSRect(
+            x: 16,
+            y: (bounds.height - textSize.height) / 2 - 1,
+            width: bounds.width - 32,
+            height: textSize.height + 2
+        )
+
+        (displayText as NSString).draw(in: textRect, withAttributes: attributes)
+    }
+}
+
 final class StatusBarController: NSObject, NSApplicationDelegate {
     private let statusFilePath: String
     private let window = NSWindow()
-    private let label = NSTextField(labelWithString: "")
+    private let statusView = StatusBarView()
     private var timer: Timer?
+    private let normalAlpha: CGFloat = 0.78
+    private let hoverAlpha: CGFloat = 0.18
     private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -24,8 +64,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.setActivationPolicy(.accessory)
         setupWindow()
         refreshStatus()
 
@@ -41,27 +80,31 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         window.level = .screenSaver
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         window.isOpaque = false
-        window.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.92)
+        window.backgroundColor = NSColor.black.withAlphaComponent(0.94)
         window.hasShadow = true
-        window.ignoresMouseEvents = false
+        window.ignoresMouseEvents = true
+        window.alphaValue = normalAlpha
 
-        label.frame = window.contentView?.bounds.insetBy(dx: 24, dy: 8) ?? .zero
-        label.autoresizingMask = [.width, .height]
-        label.alignment = .center
-        label.font = NSFont.boldSystemFont(ofSize: 30)
-        label.textColor = .white
+        statusView.frame = window.contentView?.bounds ?? .zero
+        statusView.autoresizingMask = [.width, .height]
+        statusView.textFont = NSFont.boldSystemFont(ofSize: 22)
+        statusView.textColor = .systemYellow
 
-        window.contentView?.addSubview(label)
+        window.contentView?.addSubview(statusView)
         window.orderFrontRegardless()
     }
 
-    private func calculateWindowFrame() -> NSRect {
+    private func calculateWindowFrame(for text: String = "学籍番号: 00000000  枚数: 000枚  時刻: 00:00") -> NSRect {
         let screen = NSScreen.main
         let visibleFrame = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1280, height: 720)
-        let horizontalMargin: CGFloat = 24
-        let topMargin: CGFloat = 8
-        let windowHeight: CGFloat = 56
-        let windowWidth = max(visibleFrame.width - (horizontalMargin * 2), 520)
+        let horizontalMargin: CGFloat = 18
+        let topMargin: CGFloat = 2
+        let windowHeight: CGFloat = 36
+        let textFont = NSFont.boldSystemFont(ofSize: 22)
+        let textWidth = (text as NSString).size(withAttributes: [.font: textFont]).width
+        let desiredWidth = ceil(textWidth) + 48
+        let maxWidth = visibleFrame.width - (horizontalMargin * 2)
+        let windowWidth = min(max(desiredWidth, 360), maxWidth)
         let originX = visibleFrame.minX + ((visibleFrame.width - windowWidth) / 2)
         let originY = visibleFrame.maxY - windowHeight - topMargin
 
@@ -81,19 +124,23 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
             return
         }
 
-        window.setFrame(calculateWindowFrame(), display: true)
-
         let nowText = timeFormatter.string(from: Date())
-        label.stringValue = "学籍番号: \(payload.student_id)    枚数: \(payload.capture_count)枚    時刻: \(nowText)"
+        let displayText = "学籍番号: \(payload.student_id)    枚数: \(payload.capture_count)枚    時刻: \(nowText)"
+        statusView.displayText = displayText
+        window.setFrame(calculateWindowFrame(for: displayText), display: true)
 
         if payload.mode == "warning" {
-            window.backgroundColor = NSColor.systemRed.withAlphaComponent(0.92)
-            label.textColor = .white
+            window.backgroundColor = NSColor.systemRed.withAlphaComponent(0.88)
+            statusView.textColor = .systemYellow
         } else {
-            window.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.92)
-            label.textColor = .white
+            window.backgroundColor = NSColor.black.withAlphaComponent(0.94)
+            statusView.textColor = .systemYellow
         }
 
+        let mousePoint = NSEvent.mouseLocation
+        let isHover = window.frame.contains(mousePoint)
+        window.alphaValue = isHover ? hoverAlpha : normalAlpha
+        statusView.needsDisplay = true
         window.orderFrontRegardless()
     }
 }

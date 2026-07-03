@@ -12,9 +12,10 @@ CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
 TODAY_STR=$(date +%Y%m%d)
 DESKTOP_DIR="$HOME/Desktop"
 DOWNLOADS_DIR="$HOME/Downloads"
-IS_RESUME=false
+START_MODE="new"
 RESUME_DIR=""
 RESUME_ID=""
+RESTORE_ZIP=""
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
 
@@ -40,24 +41,80 @@ for candidate_dir in "$ROOT_DIR"/*_"$TODAY_STR"; do
     if [ -f "$candidate_id_file" ] && [ -n "$candidate_id" ]; then
         RESUME_DIR="$candidate_dir"
         RESUME_ID=$(tr -d '[:space:]' < "$candidate_id_file")
-        IS_RESUME=true
+        START_MODE="resume"
         break
     fi
 done
 
-if [ "$IS_RESUME" = true ]; then
+if [ "$START_MODE" = "resume" ]; then
     STUDENT_ID="$RESUME_ID"
     SAVE_DIR="$RESUME_DIR"
     osascript -e "display dialog \"【再開】\n本日の未提出データが見つかりました。\n\n学籍番号: $STUDENT_ID\n\nキャプチャを再開します。\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
 else
-    # 学籍番号の入力
-    STUDENT_ID=$(osascript -e 'display dialog "学籍番号を入力してください:" default answer "" buttons {"キャンセル", "次へ"} default button "次へ" cancel button "キャンセル"' -e 'text returned of result' 2>/dev/null)
+    for answer_base in "$DESKTOP_DIR" "$DOWNLOADS_DIR"; do
+        if [ ! -d "$answer_base" ]; then
+            continue
+        fi
 
-    if [ $? -ne 0 ] || [ -z "$STUDENT_ID" ]; then # キャンセルボタン押下 or 何も入力されなかった場合
-        exit 0
+        for answer_dir in "$answer_base"/*_"$TODAY_STR"; do
+            if [ ! -d "$answer_dir" ]; then
+                continue
+            fi
+
+            answer_name=$(basename "$answer_dir")
+            candidate_id=${answer_name%_"$TODAY_STR"}
+
+            case "$candidate_id" in
+                ''|*[!0-9]*)
+                    continue
+                    ;;
+            esac
+
+            latest_zip=$(find "$answer_dir" -maxdepth 1 -type f -name "${candidate_id}_${TODAY_STR}_*.zip" | sort | tail -n 1)
+            if [ -n "$latest_zip" ]; then
+                STUDENT_ID="$candidate_id"
+                SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
+                RESUME_DIR="$answer_dir"
+                RESTORE_ZIP="$latest_zip"
+                START_MODE="restore"
+                break 2
+            fi
+        done
+    done
+
+    if [ "$START_MODE" = "restore" ]; then
+        TEMP_EXTRACT="/tmp/CaptureSystem_restore_${STUDENT_ID}"
+
+        if [ -d "$SAVE_DIR" ]; then
+            chflags -R nouchg "$SAVE_DIR"
+            rm -rf "$SAVE_DIR"
+        fi
+        mkdir -p "$SAVE_DIR"
+
+        rm -rf "$TEMP_EXTRACT"
+        mkdir -p "$TEMP_EXTRACT"
+
+        if unzip -oq "$RESTORE_ZIP" -d "$TEMP_EXTRACT" >/dev/null 2>&1; then
+            cp -R "$TEMP_EXTRACT"/. "$SAVE_DIR"/
+            rm -rf "$TEMP_EXTRACT"
+            rm -f "$RESTORE_ZIP"
+            osascript -e "display dialog \"【復元再開】\n提出済みZIPが見つかりました。\n\n学籍番号: $STUDENT_ID\n\n証拠データを復元してキャプチャを再開します。\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
+        else
+            rm -rf "$TEMP_EXTRACT"
+            rm -rf "$SAVE_DIR"
+            osascript -e 'display dialog "【エラー】\n提出済みZIPの復元に失敗しました。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+            exit 1
+        fi
+    else
+        # 学籍番号の入力
+        STUDENT_ID=$(osascript -e 'display dialog "学籍番号を入力してください:" default answer "" buttons {"キャンセル", "次へ"} default button "次へ" cancel button "キャンセル"' -e 'text returned of result' 2>/dev/null)
+
+        if [ $? -ne 0 ] || [ -z "$STUDENT_ID" ]; then # キャンセルボタン押下 or 何も入力されなかった場合
+            exit 0
+        fi
+
+        SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
     fi
-
-    SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
 fi
 
 ID_FILE="$SAVE_DIR/student_id.txt"
@@ -112,8 +169,10 @@ while true; do
     fi
 done
 
-if [ "$IS_RESUME" = true ]; then
+if [ "$START_MODE" = "resume" ]; then
     READY_MSG="【再開準備完了】\n学籍番号: $STUDENT_ID\n\n撮影を再開します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n"
+elif [ "$START_MODE" = "restore" ]; then
+    READY_MSG="【復元再開準備完了】\n学籍番号: $STUDENT_ID\n\n提出済みZIPから復元し、撮影を再開します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n"
 else
     READY_MSG="【事前準備完了】\n学籍番号: $STUDENT_ID\n\n撮影を開始します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n"
 fi
@@ -125,7 +184,7 @@ fi
 
 nohup caffeinate -d sh "$CAPTURE_SCRIPT" > /dev/null 2>&1 &
 
-if [ "$IS_RESUME" = true ]; then
+if [ "$START_MODE" = "resume" ] || [ "$START_MODE" = "restore" ]; then
     osascript -e 'display dialog "撮影を再開しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
 else
     osascript -e 'display dialog "撮影を開始しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1

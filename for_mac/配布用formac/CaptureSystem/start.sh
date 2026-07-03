@@ -12,6 +12,9 @@ CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
 TODAY_STR=$(date +%Y%m%d)
 DESKTOP_DIR="$HOME/Desktop"
 DOWNLOADS_DIR="$HOME/Downloads"
+IS_RESUME=false
+RESUME_DIR=""
+RESUME_ID=""
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
 
@@ -24,14 +27,39 @@ if [ -f "$PID_FILE" ]; then
     fi
 fi
 
-# 学籍番号の入力
-STUDENT_ID=$(osascript -e 'display dialog "学籍番号を入力してください:" default answer "" buttons {"キャンセル", "次へ"} default button "次へ" cancel button "キャンセル"' -e 'text returned of result' 2>/dev/null)
+# 当日の未提出データがあれば再開
+for candidate_dir in "$ROOT_DIR"/*_"$TODAY_STR"; do
+    if [ ! -d "$candidate_dir" ]; then
+        continue
+    fi
 
-if [ $? -ne 0 ] || [ -z "$STUDENT_ID" ]; then # キャンセルボタン押下 or 何も入力されなかった場合
-    exit 0
+    candidate_name=$(basename "$candidate_dir")
+    candidate_id=${candidate_name%_"$TODAY_STR"}
+    candidate_id_file="$candidate_dir/student_id.txt"
+
+    if [ -f "$candidate_id_file" ] && [ -n "$candidate_id" ]; then
+        RESUME_DIR="$candidate_dir"
+        RESUME_ID=$(tr -d '[:space:]' < "$candidate_id_file")
+        IS_RESUME=true
+        break
+    fi
+done
+
+if [ "$IS_RESUME" = true ]; then
+    STUDENT_ID="$RESUME_ID"
+    SAVE_DIR="$RESUME_DIR"
+    osascript -e "display dialog \"【再開】\n本日の未提出データが見つかりました。\n\n学籍番号: $STUDENT_ID\n\nキャプチャを再開します。\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
+else
+    # 学籍番号の入力
+    STUDENT_ID=$(osascript -e 'display dialog "学籍番号を入力してください:" default answer "" buttons {"キャンセル", "次へ"} default button "次へ" cancel button "キャンセル"' -e 'text returned of result' 2>/dev/null)
+
+    if [ $? -ne 0 ] || [ -z "$STUDENT_ID" ]; then # キャンセルボタン押下 or 何も入力されなかった場合
+        exit 0
+    fi
+
+    SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
 fi
 
-SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
 ID_FILE="$SAVE_DIR/student_id.txt"
 ANSWER_DIR_NAME="${STUDENT_ID}_${TODAY_STR}"
 ANSWER_DIR_DESKTOP="$DESKTOP_DIR/$ANSWER_DIR_NAME"
@@ -84,11 +112,21 @@ while true; do
     fi
 done
 
-osascript -e "display dialog \"【事前準備完了】\n学籍番号: $STUDENT_ID\n\n撮影を開始します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n\" buttons {\"撮影を開始する\", \"最初からやり直す\"} cancel button \"撮影を開始する\" default button \"最初からやり直す\" with icon note" >/dev/null 2>&1
+if [ "$IS_RESUME" = true ]; then
+    READY_MSG="【再開準備完了】\n学籍番号: $STUDENT_ID\n\n撮影を再開します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n"
+else
+    READY_MSG="【事前準備完了】\n学籍番号: $STUDENT_ID\n\n撮影を開始します。\n\n※ 画面撮影はバックグラウンドで実行されます。\n\n"
+fi
+
+osascript -e "display dialog \"$READY_MSG\" buttons {\"撮影を開始する\", \"最初からやり直す\"} cancel button \"撮影を開始する\" default button \"最初からやり直す\" with icon note" >/dev/null 2>&1
 if [ $? -ne 1 ]; then
     exit 1
 fi
 
 nohup caffeinate -d sh "$CAPTURE_SCRIPT" > /dev/null 2>&1 &
 
-osascript -e 'display dialog "撮影を開始しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
+if [ "$IS_RESUME" = true ]; then
+    osascript -e 'display dialog "撮影を再開しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
+else
+    osascript -e 'display dialog "撮影を開始しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
+fi

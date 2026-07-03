@@ -53,6 +53,15 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private var timer: Timer?
     private let normalAlpha: CGFloat = 0.78
     private let hoverAlpha: CGFloat = 0.18
+    private let normalBackgroundColor = NSColor.black.withAlphaComponent(0.94)
+    private let normalTextColor = NSColor.systemYellow
+    private let warningBackgroundColor = NSColor(
+        calibratedRed: 0.86,
+        green: 0.12,
+        blue: 0.10,
+        alpha: 0.96
+    )
+    private let warningTextColor = NSColor.white
     private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
@@ -80,7 +89,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         window.level = .screenSaver
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         window.isOpaque = false
-        window.backgroundColor = NSColor.black.withAlphaComponent(0.94)
+        window.backgroundColor = normalBackgroundColor
         window.hasShadow = true
         window.ignoresMouseEvents = true
         window.alphaValue = normalAlpha
@@ -88,7 +97,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         statusView.frame = window.contentView?.bounds ?? .zero
         statusView.autoresizingMask = [.width, .height]
         statusView.textFont = NSFont.boldSystemFont(ofSize: 22)
-        statusView.textColor = .systemYellow
+        statusView.textColor = normalTextColor
 
         window.contentView?.addSubview(statusView)
         window.orderFrontRegardless()
@@ -130,11 +139,11 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         window.setFrame(calculateWindowFrame(for: displayText), display: true)
 
         if payload.mode == "warning" {
-            window.backgroundColor = NSColor.systemRed.withAlphaComponent(0.88)
-            statusView.textColor = .systemYellow
+            window.backgroundColor = warningBackgroundColor
+            statusView.textColor = warningTextColor
         } else {
-            window.backgroundColor = NSColor.black.withAlphaComponent(0.94)
-            statusView.textColor = .systemYellow
+            window.backgroundColor = normalBackgroundColor
+            statusView.textColor = normalTextColor
         }
 
         let mousePoint = NSEvent.mouseLocation

@@ -54,6 +54,14 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
     }
 
     @objc private func attemptUnlock() {
+        if testInternetConnectivity() {
+            statusLabel.stringValue = "状態: Wi-Fiをオフにしてから解除してください"
+            statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.55, alpha: 1.0)
+            window.alphaValue = 1.0
+            passwordField.becomeFirstResponder()
+            return
+        }
+
         let inputHash = sha256(passwordField.stringValue)
         if inputHash == expectedHash {
             unlockResult = true
@@ -215,6 +223,40 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         } catch {
             return ""
+        }
+    }
+
+    private func testInternetConnectivity() -> Bool {
+        let checks = [
+            ["/sbin/ping", "-c", "1", "-W", "1000", "8.8.8.8"],
+            ["/usr/bin/dscacheutil", "-q", "host", "-a", "name", "www.google.com"],
+            ["/usr/bin/curl", "-s", "-o", "/dev/null", "--max-time", "3", "http://clients3.google.com/generate_204"]
+        ]
+
+        let successCount = checks.reduce(0) { count, command in
+            count + (runCommand(command) ? 1 : 0)
+        }
+
+        return successCount >= 2
+    }
+
+    private func runCommand(_ command: [String]) -> Bool {
+        guard let executable = command.first else {
+            return false
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = Array(command.dropFirst())
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
         }
     }
 

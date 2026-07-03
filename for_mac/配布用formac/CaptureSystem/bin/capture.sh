@@ -47,8 +47,8 @@ while true; do
         cp "$FILE_PATH" "$FREE_FILE_PATH"
     fi
     
-    # 30〜90秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)
+    # 1〜59秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)
     # jot -r [生成数] [最小値] [最大値]
-    SLEEP_TIME=$(jot -r 1 30 90)
+    SLEEP_TIME=$(jot -r 1 1 59)
     sleep "$SLEEP_TIME"
 done

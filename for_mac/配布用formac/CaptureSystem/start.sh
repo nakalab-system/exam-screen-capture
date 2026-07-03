@@ -5,10 +5,10 @@
 # =================================================================
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SAVE_DIR="$ROOT_DIR/Logs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
-ID_FILE="$SAVE_DIR/student_id.txt"
+SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
+TODAY_STR=$(date +%Y%m%d)
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
 
@@ -28,6 +28,9 @@ if [ $? -ne 0 ] || [ -z "$STUDENT_ID" ]; then # キャンセルボタン押下 o
     exit 0
 fi
 
+SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
+ID_FILE="$SAVE_DIR/student_id.txt"
+
 if [ -d "$SAVE_DIR" ]; then
     chflags -R nouchg "$SAVE_DIR"
 fi
@@ -40,6 +43,7 @@ if [ -f "$ID_FILE" ]; then
 fi
 echo "$STUDENT_ID" > "$ID_FILE" # >>は追記，>は上書き
 chflags uchg "$ID_FILE" # ロック
+echo "$SAVE_DIR" > "$SAVE_DIR_FILE"
 
 osascript -e 'display dialog "【案内】\nこのあと「画面収録」の許可を求めるポップアップが表示される場合があります。\n\n「システム設定を開く」を押して、お使いのターミナルアプリを一時的に「オン」に設定してください。" buttons {"次へ"} default button "次へ" with icon note' >/dev/null 2>&1
 

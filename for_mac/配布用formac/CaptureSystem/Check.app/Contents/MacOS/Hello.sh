@@ -20,7 +20,7 @@ fi
 
 if [ "$RUNNING" = true ]; then
     # 最新の画像ファイルを取得
-    LATEST_FILE=$(ls -t "$FREE_DIR"/img_*.jpg 2>/dev/null | head -n 1)
+    LATEST_FILE=$(ls -t "$FREE_DIR"/*.jpg 2>/dev/null | head -n 1)
 
     
     if [ -n "$LATEST_FILE" ]; then

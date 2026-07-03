@@ -5,9 +5,15 @@
 # =================================================================
 
 ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
-SAVE_DIR="$ROOT_DIR/Logs"
 FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
+SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
+
+SAVE_DIR=""
+if [ -f "$SAVE_DIR_FILE" ]; then
+    SAVE_DIR=$(cat "$SAVE_DIR_FILE")
+fi
+
 ID_FILE="$SAVE_DIR/student_id.txt"
 
 # 1. キャプチャプロセスの停止
@@ -28,10 +34,11 @@ fi
 # 3. ZIPアーカイブの作成
 if [ -f "$ID_FILE" ]; then
     STUDENT_ID=$(cat "$ID_FILE" | tr -d '[:space:]')
-    ZIP_NAME="${STUDENT_ID}_evidence.zip"
+    ZIP_NAME="${STUDENT_ID}_$(date +%Y%m%d_%H%M%S).zip"
     ZIP_PATH="$ROOT_DIR/$ZIP_NAME"
     
     rm -f "$PID_FILE"
+    rm -f "$SAVE_DIR_FILE"
     
     # 既存の同名ファイルがあれば、削除せずに末尾へ _2, _3... を付けて回避
     if [ -e "$ZIP_PATH" ]; then

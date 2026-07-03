@@ -9,6 +9,7 @@ SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
 HASH_FILE="$ROOT_DIR/.ta_guard"
 STATUS_FILE="/tmp/CaptureSystem_status.json"
+SWIFT_SCRIPT="$ROOT_DIR/bin/lock_screen.swift"
 DEFAULT_HASH_PART1="9af15b336e6a9619928537df30b2e6a23"
 DEFAULT_HASH_PART2="76569fcf9d7e773eccede65606529a0"
 
@@ -24,7 +25,14 @@ if [ ! -d "$SAVE_DIR" ] || [ ! -f "$LOCK_FLAG" ]; then
     exit 0
 fi
 
-trap 'rm -f "$LOCK_SCREEN_PID_FILE"' EXIT
+cleanup() {
+    if [ -n "$SWIFT_PID" ]; then
+        kill "$SWIFT_PID" 2>/dev/null
+    fi
+    rm -f "$LOCK_SCREEN_PID_FILE"
+}
+
+trap cleanup EXIT TERM INT
 echo $$ > "$LOCK_SCREEN_PID_FILE"
 
 EXPECTED_HASH="${DEFAULT_HASH_PART1}${DEFAULT_HASH_PART2}"
@@ -36,10 +44,13 @@ if [ -f "$HASH_FILE" ]; then
 fi
 
 while [ -f "$LOCK_FLAG" ]; do
-    INPUT_PASSWORD=$(osascript -e 'text returned of (display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、TA用パスワードが入力されるまでPCを操作しないでください。" default answer "" with hidden answer buttons {"解除を実行"} default button "解除を実行" with icon stop)' 2>/dev/null)
-    INPUT_HASH=$(printf '%s' "$INPUT_PASSWORD" | shasum -a 256 | awk '{print $1}')
+    swift "$SWIFT_SCRIPT" "$EXPECTED_HASH" "$LOCK_FLAG" &
+    SWIFT_PID=$!
+    wait "$SWIFT_PID"
+    RESULT=$?
+    SWIFT_PID=""
 
-    if [ "$INPUT_HASH" = "$EXPECTED_HASH" ]; then
+    if [ "$RESULT" -eq 0 ] && [ -f "$LOCK_FLAG" ]; then
         rm -f "$LOCK_FLAG"
         printf '[%s] ロック解除\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$UNLOCK_LOG"
         if [ -f "$STATUS_FILE" ]; then
@@ -50,9 +61,10 @@ while [ -f "$LOCK_FLAG" ]; do
               "${CURRENT_COUNT:-0}" \
               "$(date +%H:%M)" > "$STATUS_FILE"
         fi
-        osascript -e 'display dialog "ロックを解除しました。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
         break
     fi
 
-    osascript -e 'display dialog "TA用パスワードが正しくありません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+    if [ ! -f "$LOCK_FLAG" ]; then
+        break
+    fi
 done

@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
+LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
 DESKTOP_DIR="$HOME/Desktop"
@@ -19,6 +20,12 @@ if [ -f "$SAVE_DIR_FILE" ]; then
 fi
 
 ID_FILE="$SAVE_DIR/student_id.txt"
+LOCK_FLAG="$SAVE_DIR/LOCK_ACTIVE.flag"
+
+if [ -f "$LOCK_FLAG" ]; then
+    osascript -e 'display dialog "【提出不可】\nインターネット接続の警告状態です。\nTAによる解除が完了するまで提出処理は実行できません。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+    exit 1
+fi
 
 # 1. キャプチャプロセスの停止
 if [ -f "$PID_FILE" ]; then
@@ -35,6 +42,14 @@ if [ -f "$MONITOR_PID_FILE" ]; then
 
     if [ -n "$MONITOR_PID" ] && ps -p "$MONITOR_PID" > /dev/null; then
         kill -TERM "$MONITOR_PID" 2>/dev/null
+    fi
+fi
+
+if [ -f "$LOCK_SCREEN_PID_FILE" ]; then
+    LOCK_SCREEN_PID=$(cat "$LOCK_SCREEN_PID_FILE")
+
+    if [ -n "$LOCK_SCREEN_PID" ] && ps -p "$LOCK_SCREEN_PID" > /dev/null; then
+        kill -TERM "$LOCK_SCREEN_PID" 2>/dev/null
     fi
 fi
 
@@ -70,6 +85,7 @@ if [ -f "$ID_FILE" ]; then
     
     rm -f "$PID_FILE"
     rm -f "$MONITOR_PID_FILE"
+    rm -f "$LOCK_SCREEN_PID_FILE"
     rm -f "$SAVE_DIR_FILE"
     rm -f "$ANSWER_DIR_FILE"
     

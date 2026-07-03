@@ -6,6 +6,9 @@
 
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
+LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
+ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
+LOCK_SCREEN_SCRIPT="$ROOT_DIR/bin/lock_screen.sh"
 
 test_internet_connectivity() {
     ok_ping=0
@@ -38,6 +41,7 @@ if [ ! -d "$SAVE_DIR" ]; then
 fi
 
 LOG_FILE="$SAVE_DIR/network_warning.log"
+LOCK_FLAG="$SAVE_DIR/LOCK_ACTIVE.flag"
 trap 'rm -f "$MONITOR_PID_FILE"' EXIT
 echo $$ > "$MONITOR_PID_FILE"
 
@@ -51,7 +55,15 @@ while true; do
     if test_internet_connectivity; then
         if [ "$was_connected" -eq 0 ]; then
             printf '[%s] インターネット接続を検知\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
-            osascript -e 'display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、指示があるまでPCを操作しないでください。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+            printf '[%s] ロック有効化\n' "$(date '+%Y-%m-%d %H:%M:%S')" > "$LOCK_FLAG"
+            if [ -f "$LOCK_SCREEN_PID_FILE" ]; then
+                LOCK_PID=$(cat "$LOCK_SCREEN_PID_FILE")
+            else
+                LOCK_PID=""
+            fi
+            if [ -z "$LOCK_PID" ] || ! ps -p "$LOCK_PID" > /dev/null 2>&1; then
+                nohup sh "$LOCK_SCREEN_SCRIPT" > /dev/null 2>&1 &
+            fi
             was_connected=1
         fi
     else

@@ -7,6 +7,7 @@
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
+LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
 CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
@@ -52,6 +53,7 @@ if [ -f "$PID_FILE" ]; then
 fi
 
 rm -f "$MONITOR_PID_FILE"
+rm -f "$LOCK_SCREEN_PID_FILE"
 
 # 開始前のオフライン確認
 while true; do

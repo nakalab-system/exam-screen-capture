@@ -19,6 +19,27 @@ RESTORE_ZIP=""
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
 
+test_internet_connectivity() {
+    ok_ping=0
+    ok_dns=0
+    ok_http=0
+
+    if ping -c 1 -W 1000 8.8.8.8 >/dev/null 2>&1; then
+        ok_ping=1
+    fi
+
+    if dscacheutil -q host -a name www.google.com >/dev/null 2>&1; then
+        ok_dns=1
+    fi
+
+    if curl -s -o /dev/null --max-time 3 http://clients3.google.com/generate_204; then
+        ok_http=1
+    fi
+
+    score=$((ok_ping + ok_dns + ok_http))
+    [ "$score" -ge 2 ]
+}
+
 # 二重起動チェック
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
@@ -27,6 +48,19 @@ if [ -f "$PID_FILE" ]; then
         exit 0
     fi
 fi
+
+# 開始前のオフライン確認
+while true; do
+    if test_internet_connectivity; then
+        osascript -e 'display dialog "【警告】インターネット接続が検出されました。\n\n試験を開始するには、PCを完全にオフラインにしてください。\nWi-Fiをオフにした後で「再確認」を押してください。" buttons {"中止", "再確認"} default button "再確認" cancel button "中止" with icon caution' >/dev/null 2>&1
+
+        if [ $? -ne 0 ]; then
+            exit 0
+        fi
+    else
+        break
+    fi
+done
 
 # 当日の未提出データがあれば再開
 for candidate_dir in "$ROOT_DIR"/*_"$TODAY_STR"; do

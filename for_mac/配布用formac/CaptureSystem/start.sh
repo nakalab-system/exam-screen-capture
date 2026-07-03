@@ -6,9 +6,11 @@
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
+MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
 CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
+NETWORK_MONITOR_SCRIPT="$ROOT_DIR/bin/network_monitor.sh"
 TODAY_STR=$(date +%Y%m%d)
 DESKTOP_DIR="$HOME/Desktop"
 DOWNLOADS_DIR="$HOME/Downloads"
@@ -48,6 +50,8 @@ if [ -f "$PID_FILE" ]; then
         exit 0
     fi
 fi
+
+rm -f "$MONITOR_PID_FILE"
 
 # 開始前のオフライン確認
 while true; do
@@ -217,6 +221,7 @@ if [ $? -ne 1 ]; then
 fi
 
 nohup caffeinate -d sh "$CAPTURE_SCRIPT" > /dev/null 2>&1 &
+nohup sh "$NETWORK_MONITOR_SCRIPT" > /dev/null 2>&1 &
 
 if [ "$START_MODE" = "resume" ] || [ "$START_MODE" = "restore" ]; then
     osascript -e 'display dialog "撮影を再開しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1

@@ -7,6 +7,7 @@
 ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
+MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
 DESKTOP_DIR="$HOME/Desktop"
@@ -27,6 +28,14 @@ if [ -f "$PID_FILE" ]; then
         kill -TERM "$PID" 2>/dev/null
     fi
     sleep 2
+fi
+
+if [ -f "$MONITOR_PID_FILE" ]; then
+    MONITOR_PID=$(cat "$MONITOR_PID_FILE")
+
+    if [ -n "$MONITOR_PID" ] && ps -p "$MONITOR_PID" > /dev/null; then
+        kill -TERM "$MONITOR_PID" 2>/dev/null
+    fi
 fi
 
 # 2. フォルダの中身の再帰的ロック解除
@@ -60,6 +69,7 @@ if [ -f "$ID_FILE" ]; then
     ZIP_PATH="$ANSWER_DIR/$ZIP_NAME"
     
     rm -f "$PID_FILE"
+    rm -f "$MONITOR_PID_FILE"
     rm -f "$SAVE_DIR_FILE"
     rm -f "$ANSWER_DIR_FILE"
     

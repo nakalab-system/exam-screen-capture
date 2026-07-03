@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
+STATUS_FILE="/tmp/CaptureSystem_status.json"
 
 if [ ! -f "$SAVE_DIR_FILE" ]; then
     exit 1
@@ -45,6 +46,10 @@ while true; do
     if [ -f "$FILE_PATH" ]; then
         chflags uchg "$FILE_PATH"
         cp "$FILE_PATH" "$FREE_FILE_PATH"
+        printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"normal"}\n' \
+          "$STUDENT_ID" \
+          "$CAPTURE_COUNT" \
+          "$(date +%H:%M)" > "$STATUS_FILE"
     fi
     
     # 1〜59秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)

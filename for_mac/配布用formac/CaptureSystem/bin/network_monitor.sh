@@ -9,6 +9,7 @@ MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
 ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 LOCK_SCREEN_SCRIPT="$ROOT_DIR/bin/lock_screen.sh"
+STATUS_FILE="/tmp/CaptureSystem_status.json"
 
 test_internet_connectivity() {
     ok_ping=0
@@ -56,6 +57,14 @@ while true; do
         if [ "$was_connected" -eq 0 ]; then
             printf '[%s] インターネット接続を検知\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
             printf '[%s] ロック有効化\n' "$(date '+%Y-%m-%d %H:%M:%S')" > "$LOCK_FLAG"
+            if [ -f "$STATUS_FILE" ]; then
+                CURRENT_COUNT=$(awk -F'"capture_count":' '{print $2}' "$STATUS_FILE" | awk -F',' 'NR==1 {gsub(/[^0-9]/, "", $1); print $1}')
+                CURRENT_ID=$(awk -F'"student_id":"' '{print $2}' "$STATUS_FILE" | awk -F'"' 'NR==1 {print $1}')
+                printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"warning"}\n' \
+                  "$CURRENT_ID" \
+                  "${CURRENT_COUNT:-0}" \
+                  "$(date +%H:%M)" > "$STATUS_FILE"
+            fi
             if [ -f "$LOCK_SCREEN_PID_FILE" ]; then
                 LOCK_PID=$(cat "$LOCK_SCREEN_PID_FILE")
             else

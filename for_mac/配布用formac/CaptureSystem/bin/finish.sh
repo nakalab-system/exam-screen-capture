@@ -9,8 +9,10 @@ FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
+STATUS_BAR_PID_FILE="/tmp/CaptureSystem_status_bar.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
+STATUS_FILE="/tmp/CaptureSystem_status.json"
 DESKTOP_DIR="$HOME/Desktop"
 DOWNLOADS_DIR="$HOME/Downloads"
 
@@ -53,6 +55,14 @@ if [ -f "$LOCK_SCREEN_PID_FILE" ]; then
     fi
 fi
 
+if [ -f "$STATUS_BAR_PID_FILE" ]; then
+    STATUS_BAR_PID=$(cat "$STATUS_BAR_PID_FILE")
+
+    if [ -n "$STATUS_BAR_PID" ] && ps -p "$STATUS_BAR_PID" > /dev/null; then
+        kill -TERM "$STATUS_BAR_PID" 2>/dev/null
+    fi
+fi
+
 # 2. フォルダの中身の再帰的ロック解除
 if [ -d "$SAVE_DIR" ]; then
     chflags -R nouchg "$SAVE_DIR"
@@ -86,8 +96,10 @@ if [ -f "$ID_FILE" ]; then
     rm -f "$PID_FILE"
     rm -f "$MONITOR_PID_FILE"
     rm -f "$LOCK_SCREEN_PID_FILE"
+    rm -f "$STATUS_BAR_PID_FILE"
     rm -f "$SAVE_DIR_FILE"
     rm -f "$ANSWER_DIR_FILE"
+    rm -f "$STATUS_FILE"
     
     # 既存の同名ファイルがあれば、削除せずに末尾へ _2, _3... を付けて回避
     if [ -e "$ZIP_PATH" ]; then

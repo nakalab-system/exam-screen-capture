@@ -8,6 +8,7 @@ ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
 HASH_FILE="$ROOT_DIR/.ta_guard"
+STATUS_FILE="/tmp/CaptureSystem_status.json"
 DEFAULT_HASH_PART1="9af15b336e6a9619928537df30b2e6a23"
 DEFAULT_HASH_PART2="76569fcf9d7e773eccede65606529a0"
 
@@ -41,6 +42,14 @@ while [ -f "$LOCK_FLAG" ]; do
     if [ "$INPUT_HASH" = "$EXPECTED_HASH" ]; then
         rm -f "$LOCK_FLAG"
         printf '[%s] ロック解除\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$UNLOCK_LOG"
+        if [ -f "$STATUS_FILE" ]; then
+            CURRENT_COUNT=$(awk -F'"capture_count":' '{print $2}' "$STATUS_FILE" | awk -F',' 'NR==1 {gsub(/[^0-9]/, "", $1); print $1}')
+            CURRENT_ID=$(awk -F'"student_id":"' '{print $2}' "$STATUS_FILE" | awk -F'"' 'NR==1 {print $1}')
+            printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"normal"}\n' \
+              "$CURRENT_ID" \
+              "${CURRENT_COUNT:-0}" \
+              "$(date +%H:%M)" > "$STATUS_FILE"
+        fi
         osascript -e 'display dialog "ロックを解除しました。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1
         break
     fi

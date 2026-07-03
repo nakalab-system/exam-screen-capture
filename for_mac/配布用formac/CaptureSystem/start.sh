@@ -8,10 +8,13 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 MONITOR_PID_FILE="/tmp/CaptureSystem_network_monitor.pid"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
+STATUS_BAR_PID_FILE="/tmp/CaptureSystem_status_bar.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
+STATUS_FILE="/tmp/CaptureSystem_status.json"
 CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
 NETWORK_MONITOR_SCRIPT="$ROOT_DIR/bin/network_monitor.sh"
+STATUS_BAR_SCRIPT="$ROOT_DIR/bin/status_bar.sh"
 TODAY_STR=$(date +%Y%m%d)
 DESKTOP_DIR="$HOME/Desktop"
 DOWNLOADS_DIR="$HOME/Downloads"
@@ -54,6 +57,7 @@ fi
 
 rm -f "$MONITOR_PID_FILE"
 rm -f "$LOCK_SCREEN_PID_FILE"
+rm -f "$STATUS_BAR_PID_FILE"
 
 # 開始前のオフライン確認
 while true; do
@@ -176,6 +180,11 @@ fi
 echo "$STUDENT_ID" > "$ID_FILE" # >>は追記，>は上書き
 chflags uchg "$ID_FILE" # ロック
 echo "$SAVE_DIR" > "$SAVE_DIR_FILE"
+CAPTURE_COUNT=$(find "$SAVE_DIR" -maxdepth 1 -type f -name "${STUDENT_ID}_*.jpg" | wc -l | tr -d '[:space:]')
+printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"normal"}\n' \
+  "$STUDENT_ID" \
+  "$CAPTURE_COUNT" \
+  "$(date +%H:%M)" > "$STATUS_FILE"
 
 if mkdir -p "$ANSWER_DIR_DESKTOP" 2>/dev/null; then
     ANSWER_DIR="$ANSWER_DIR_DESKTOP"
@@ -224,6 +233,7 @@ fi
 
 nohup caffeinate -d sh "$CAPTURE_SCRIPT" > /dev/null 2>&1 &
 nohup sh "$NETWORK_MONITOR_SCRIPT" > /dev/null 2>&1 &
+nohup sh "$STATUS_BAR_SCRIPT" > /dev/null 2>&1 &
 
 if [ "$START_MODE" = "resume" ] || [ "$START_MODE" = "restore" ]; then
     osascript -e 'display dialog "撮影を再開しました。\nバックグラウンドで記録中です。" buttons {"OK"} default button "OK" with icon note' >/dev/null 2>&1

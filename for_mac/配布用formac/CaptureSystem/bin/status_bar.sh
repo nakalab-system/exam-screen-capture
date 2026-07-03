@@ -14,6 +14,10 @@ cleanup() {
 
 trap cleanup EXIT TERM INT
 
+if ! command -v swift >/dev/null 2>&1; then
+    exit 0
+fi
+
 echo $$ > "$STATUS_BAR_PID_FILE"
 swift "$SWIFT_SCRIPT" "$STATUS_FILE" &
 SWIFT_PID=$!

@@ -43,12 +43,50 @@ if [ -f "$HASH_FILE" ]; then
     fi
 fi
 
+test_internet_connectivity() {
+    ok_ping=0
+    ok_dns=0
+    ok_http=0
+
+    if ping -c 1 -W 1000 8.8.8.8 >/dev/null 2>&1; then
+        ok_ping=1
+    fi
+
+    if dscacheutil -q host -a name www.google.com >/dev/null 2>&1; then
+        ok_dns=1
+    fi
+
+    if curl -s -o /dev/null --max-time 3 http://clients3.google.com/generate_204; then
+        ok_http=1
+    fi
+
+    score=$((ok_ping + ok_dns + ok_http))
+    [ "$score" -ge 2 ]
+}
+
 while [ -f "$LOCK_FLAG" ]; do
-    swift "$SWIFT_SCRIPT" "$EXPECTED_HASH" "$LOCK_FLAG" &
-    SWIFT_PID=$!
-    wait "$SWIFT_PID"
-    RESULT=$?
-    SWIFT_PID=""
+    if command -v swift >/dev/null 2>&1; then
+        swift "$SWIFT_SCRIPT" "$EXPECTED_HASH" "$LOCK_FLAG" &
+        SWIFT_PID=$!
+        wait "$SWIFT_PID"
+        RESULT=$?
+        SWIFT_PID=""
+    else
+        INPUT_PASSWORD=$(osascript -e 'text returned of (display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、TA用パスワードが入力されるまでPCを操作しないでください。\n\n※ このMacでは簡易ロック画面で動作中です。" default answer "" with hidden answer buttons {"解除を実行"} default button "解除を実行" with icon stop)' 2>/dev/null)
+
+        if test_internet_connectivity; then
+            osascript -e 'display dialog "【解除不可】\nWi-Fiをオフにしてから解除してください。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+            RESULT=1
+        else
+            INPUT_HASH=$(printf '%s' "$INPUT_PASSWORD" | shasum -a 256 | awk '{print $1}')
+            if [ "$INPUT_HASH" = "$EXPECTED_HASH" ]; then
+                RESULT=0
+            else
+                osascript -e 'display dialog "TA用パスワードが正しくありません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+                RESULT=1
+            fi
+        fi
+    fi
 
     if [ "$RESULT" -eq 0 ] && [ -f "$LOCK_FLAG" ]; then
         rm -f "$LOCK_FLAG"

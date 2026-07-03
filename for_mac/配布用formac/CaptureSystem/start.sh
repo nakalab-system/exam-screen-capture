@@ -22,8 +22,13 @@ START_MODE="new"
 RESUME_DIR=""
 RESUME_ID=""
 RESTORE_ZIP=""
+SWIFT_AVAILABLE=1
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
+
+if ! command -v swift >/dev/null 2>&1; then
+    SWIFT_AVAILABLE=0
+fi
 
 test_internet_connectivity() {
     ok_ping=0
@@ -229,6 +234,10 @@ fi
 osascript -e "display dialog \"$READY_MSG\" buttons {\"撮影を開始する\", \"最初からやり直す\"} cancel button \"撮影を開始する\" default button \"最初からやり直す\" with icon note" >/dev/null 2>&1
 if [ $? -ne 1 ]; then
     exit 1
+fi
+
+if [ "$SWIFT_AVAILABLE" -eq 0 ]; then
+    osascript -e 'display dialog "【案内】\nこのMacでは swift コマンドが利用できません。\n\nそのため、常時バーは無効になります。\nロック画面は簡易ダイアログ方式に自動切替されます。\n\nキャプチャ、オフライン確認、ネットワーク監視、提出処理は継続可能です。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
 fi
 
 nohup caffeinate -d sh "$CAPTURE_SCRIPT" > /dev/null 2>&1 &

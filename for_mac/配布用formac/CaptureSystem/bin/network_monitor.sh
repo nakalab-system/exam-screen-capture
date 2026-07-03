@@ -51,6 +51,7 @@ while true; do
     if test_internet_connectivity; then
         if [ "$was_connected" -eq 0 ]; then
             printf '[%s] インターネット接続を検知\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+            osascript -e 'display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、指示があるまでPCを操作しないでください。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
             was_connected=1
         fi
     else

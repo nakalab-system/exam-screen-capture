@@ -7,8 +7,11 @@
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
+ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
 CAPTURE_SCRIPT="$ROOT_DIR/bin/capture.sh"
 TODAY_STR=$(date +%Y%m%d)
+DESKTOP_DIR="$HOME/Desktop"
+DOWNLOADS_DIR="$HOME/Downloads"
 
 xattr -cr "$ROOT_DIR/Check.app" # com.apple.quarantineの回避
 
@@ -30,6 +33,10 @@ fi
 
 SAVE_DIR="$ROOT_DIR/${STUDENT_ID}_${TODAY_STR}"
 ID_FILE="$SAVE_DIR/student_id.txt"
+ANSWER_DIR_NAME="${STUDENT_ID}_${TODAY_STR}"
+ANSWER_DIR_DESKTOP="$DESKTOP_DIR/$ANSWER_DIR_NAME"
+ANSWER_DIR_DOWNLOADS="$DOWNLOADS_DIR/$ANSWER_DIR_NAME"
+ANSWER_DIR=""
 
 if [ -d "$SAVE_DIR" ]; then
     chflags -R nouchg "$SAVE_DIR"
@@ -44,6 +51,17 @@ fi
 echo "$STUDENT_ID" > "$ID_FILE" # >>は追記，>は上書き
 chflags uchg "$ID_FILE" # ロック
 echo "$SAVE_DIR" > "$SAVE_DIR_FILE"
+
+if mkdir -p "$ANSWER_DIR_DESKTOP" 2>/dev/null; then
+    ANSWER_DIR="$ANSWER_DIR_DESKTOP"
+elif mkdir -p "$ANSWER_DIR_DOWNLOADS" 2>/dev/null; then
+    ANSWER_DIR="$ANSWER_DIR_DOWNLOADS"
+else
+    osascript -e 'display dialog "【エラー】\n解答用フォルダを作成できませんでした。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+    exit 1
+fi
+
+echo "$ANSWER_DIR" > "$ANSWER_DIR_FILE"
 
 osascript -e 'display dialog "【案内】\nこのあと「画面収録」の許可を求めるポップアップが表示される場合があります。\n\n「システム設定を開く」を押して、お使いのターミナルアプリを一時的に「オン」に設定してください。" buttons {"次へ"} default button "次へ" with icon note' >/dev/null 2>&1
 

@@ -8,6 +8,9 @@ ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 FREE_DIR="/tmp/CaptureSystemLogs"
 PID_FILE="/tmp/CaptureSystem_capture.pid"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
+ANSWER_DIR_FILE="/tmp/CaptureSystem_answer_dir.txt"
+DESKTOP_DIR="$HOME/Desktop"
+DOWNLOADS_DIR="$HOME/Downloads"
 
 SAVE_DIR=""
 if [ -f "$SAVE_DIR_FILE" ]; then
@@ -35,10 +38,30 @@ fi
 if [ -f "$ID_FILE" ]; then
     STUDENT_ID=$(cat "$ID_FILE" | tr -d '[:space:]')
     ZIP_NAME="${STUDENT_ID}_$(date +%Y%m%d_%H%M%S).zip"
-    ZIP_PATH="$ROOT_DIR/$ZIP_NAME"
+    ANSWER_DIR=""
+    if [ -f "$ANSWER_DIR_FILE" ]; then
+        ANSWER_DIR=$(cat "$ANSWER_DIR_FILE")
+    fi
+
+    if [ -z "$ANSWER_DIR" ] || [ ! -d "$ANSWER_DIR" ]; then
+        TODAY_STR=$(date +%Y%m%d)
+        ANSWER_DIR_DESKTOP="$DESKTOP_DIR/${STUDENT_ID}_${TODAY_STR}"
+        ANSWER_DIR_DOWNLOADS="$DOWNLOADS_DIR/${STUDENT_ID}_${TODAY_STR}"
+
+        if [ -d "$ANSWER_DIR_DESKTOP" ] || mkdir -p "$ANSWER_DIR_DESKTOP" 2>/dev/null; then
+            ANSWER_DIR="$ANSWER_DIR_DESKTOP"
+        elif [ -d "$ANSWER_DIR_DOWNLOADS" ] || mkdir -p "$ANSWER_DIR_DOWNLOADS" 2>/dev/null; then
+            ANSWER_DIR="$ANSWER_DIR_DOWNLOADS"
+        else
+            ANSWER_DIR="$ROOT_DIR"
+        fi
+    fi
+
+    ZIP_PATH="$ANSWER_DIR/$ZIP_NAME"
     
     rm -f "$PID_FILE"
     rm -f "$SAVE_DIR_FILE"
+    rm -f "$ANSWER_DIR_FILE"
     
     # 既存の同名ファイルがあれば、削除せずに末尾へ _2, _3... を付けて回避
     if [ -e "$ZIP_PATH" ]; then
@@ -60,7 +83,7 @@ if [ -f "$ID_FILE" ]; then
     # 4. クリーンアップ
     rm -rf "$SAVE_DIR"
 
-    MSG="【圧縮完了】\n\n証拠データを作成しました：\n$ZIP_NAME\n\nこのファイルを指定の方法（USBメモリ等）で提出してください。"
+    MSG="【圧縮完了】\n\n証拠データを作成しました：\n$ZIP_NAME\n\n保存先:\n$ANSWER_DIR\n\nこのファイルを指定の方法（USBメモリ等）で提出してください。"
     osascript -e "display dialog \"$MSG\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
 else
     osascript -e 'display dialog "【エラー】\n学籍番号データが見つかりません。試験が正しく開始されていなかった可能性があります。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1

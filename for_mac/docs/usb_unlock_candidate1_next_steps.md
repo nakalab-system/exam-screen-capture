@@ -1,7 +1,7 @@
 # mac版 USB解除（候補1） 次の手順
 
 この文書は、
-`for_mac/usb_unlock_candidate1_spec.md`
+`for_mac/docs/usb_unlock_candidate1_spec.md`
 を受けて、
 **実装前に具体化しておくべき次の手順**
 を整理したものです。

@@ -108,6 +108,7 @@ swift --version
 - TA用USB + TA PIN で解除します
 - **解除前に Wi-Fi を OFF にする必要があります**
 - Wi-Fi が ON のままでは解除できません
+- 現在の運用では、TA PIN のハッシュはシステム本体ではなく **TA用USB側** に持たせます
 
 ---
 
@@ -163,6 +164,25 @@ ZIP 名は次の形式です。
 - Wi-Fi が OFF になっているか
 - TA 用USBが接続されているか
 - TA PIN が正しいか
+- `CaptureSystem/.ta_unlock_policy` と USB 内 `ta_unlock.key` の `challenge_id` が一致しているか
+- `ta_unlock.key` が旧形式ではなく、`unlock_key` と `pin_hash` を両方含んでいるか
+
+### ロック解除の応急処置
+
+通常は、TA用USB + TA PIN で解除してください。
+
+ただし、USB認識不良や UI 不具合などで通常解除できない場合は、
+**緊急用の応急処置**として `LOCK_ACTIVE.flag` を削除して復旧できます。
+
+対象ファイル例:
+
+- `~/Desktop/{学籍番号}_{YYYYMMDD}/{実行中フォルダ}/LOCK_ACTIVE.flag`
+
+補足:
+
+- この方法は **通常運用では使わず、最後の手段** としてください
+- `LOCK_ACTIVE.flag` が削除されると、ロック画面は解除状態になります
+- 応急処置後は、必要に応じて `network_warning.log` も確認してください
 
 ---
 
@@ -174,6 +194,11 @@ ZIP 名は次の形式です。
   - `CaptureSystem/.ta_unlock_policy`
   - TA用USB内の `ta_unlock.key`
 - `.ta_unlock_policy` には `key_hash` のみを置き、TA入力用の `pin_hash` は USB 側 `ta_unlock.key` に持たせます
+- 実ファイルの `.ta_unlock_policy` と `ta_unlock.key` は `.gitignore` 対象です
+- Git には雛形ファイルのみ置きます
+  - `for_mac/配布用formac/CaptureSystem/.ta_unlock_policy.example`
+  - `for_mac/ta_unlock.key.example`
 - 補助スクリプト:
   `for_mac/create_usb_unlock_materials.sh`
   で USB解除用ファイルを生成できます
+- 試験ごとに本体一式を手編集しないよう、実運用では USB 側の `ta_unlock.key` に解除用情報を持たせる方針です

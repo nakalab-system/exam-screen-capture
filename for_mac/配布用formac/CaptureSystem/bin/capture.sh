@@ -16,6 +16,7 @@ fi
 
 SAVE_DIR=$(cat "$SAVE_DIR_FILE")
 ID_FILE="$SAVE_DIR/student_id.txt"
+LOCK_FLAG="$SAVE_DIR/LOCK_ACTIVE.flag"
 
 if [ ! -d "$SAVE_DIR" ] || [ ! -f "$ID_FILE" ]; then
     exit 1
@@ -46,10 +47,15 @@ while true; do
     if [ -f "$FILE_PATH" ]; then
         chflags uchg "$FILE_PATH"
         cp "$FILE_PATH" "$FREE_FILE_PATH"
-        printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"normal"}\n' \
+        STATUS_MODE="normal"
+        if [ -f "$LOCK_FLAG" ]; then
+            STATUS_MODE="warning"
+        fi
+        printf '{"student_id":"%s","capture_count":%s,"current_time":"%s","mode":"%s"}\n' \
           "$STUDENT_ID" \
           "$CAPTURE_COUNT" \
-          "$(date +%H:%M)" > "$STATUS_FILE"
+          "$(date +%H:%M)" \
+          "$STATUS_MODE" > "$STATUS_FILE"
     fi
     
     # 1〜59秒のランダムな間隔で待機 (macOS標準のjotコマンドを使用)

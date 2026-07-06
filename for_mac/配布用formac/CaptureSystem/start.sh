@@ -146,7 +146,6 @@ else
         if unzip -oq "$RESTORE_ZIP" -d "$TEMP_EXTRACT" >/dev/null 2>&1; then
             cp -R "$TEMP_EXTRACT"/. "$SAVE_DIR"/
             rm -rf "$TEMP_EXTRACT"
-            rm -f "$RESTORE_ZIP"
             osascript -e "display dialog \"【復元再開】\n提出済みZIPが見つかりました。\n\n学籍番号: $STUDENT_ID\n\n証拠データを復元してキャプチャを再開します。\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
         else
             rm -rf "$TEMP_EXTRACT"

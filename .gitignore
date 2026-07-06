@@ -1,2 +1,4 @@
 make_ta_usb.ps1
 .DS_Store
+.ta_unlock_policy
+ta_unlock.key

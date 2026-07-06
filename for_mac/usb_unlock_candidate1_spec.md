@@ -23,7 +23,7 @@
 - `LOCK_ACTIVE.flag` を作成
 - ロック画面を表示
 - Wi-Fi OFF確認
-- TAパスワード入力
+- TA PIN入力
 - 一致すれば `LOCK_ACTIVE.flag` を削除して解除
 
 この方式は実装が軽い一方で、
@@ -63,12 +63,13 @@
 - 試験配布ごとの識別子
   例: `challenge_id`
 - USB鍵ファイル内に期待する値のハッシュ
-- TA用PINのハッシュ
 
 本体側には、次を置かない方針とする。
 
 - 平文の解除パスワード
 - 平文のUSB鍵
+- 平文の TA PIN
+- TA PIN のハッシュ
 
 ### 3-2. USB側に置くもの
 
@@ -100,10 +101,8 @@ USB側には、毎回の試験配布に対応する鍵ファイルを置く。
 
 候補例:
 
-- `.ta_guard`
-  現在のPINハッシュ保存に利用中
 - `.ta_unlock_policy`
-  USB解除用の設定ファイルとして新設
+  USB解除用の設定ファイル
 
 例:
 
@@ -111,7 +110,6 @@ USB側には、毎回の試験配布に対応する鍵ファイルを置く。
 challenge_id=2026-07-midterm-A
 required_key_filename=ta_unlock.key
 key_hash=<USB鍵ファイル内容のSHA-256>
-pin_hash=<TA PINのSHA-256>
 ```
 
 ### 4-2. USB側
@@ -125,7 +123,9 @@ pin_hash=<TA PINのSHA-256>
 内容例:
 
 ```text
-2026-07-midterm-A:9d8c7f...random...
+challenge_id=2026-07-midterm-A
+unlock_key=9d8c7f...random...
+pin_hash=<TA PINのSHA-256>
 ```
 
 ---
@@ -141,7 +141,7 @@ pin_hash=<TA PINのSHA-256>
 5. システムが USB を探索する
 6. `ta_unlock.key` を探す
 7. 鍵ファイル内容の照合を行う
-8. 一致した場合のみ PIN入力を受け付ける
+8. USB内の `pin_hash` を読み出す
 9. PIN照合成功なら解除
 
 ---
@@ -217,7 +217,7 @@ PINは次のどちらかの運用が考えられる。
 
 必要に応じて更新:
 
-- `pin_hash`
+- USB内 `pin_hash`
 
 ---
 

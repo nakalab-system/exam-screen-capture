@@ -6,6 +6,23 @@ final class KeyableWindow: NSWindow {
     override var canBecomeMain: Bool { true }
 }
 
+enum UnlockMode {
+    case usb(policyFilePath: String)
+}
+
+struct UsbUnlockPolicy {
+    let challengeId: String
+    let requiredKeyFilename: String
+    let keyHash: String
+}
+
+enum UsbKeyValidationResult {
+    case success(pinHash: String)
+    case usbNotFound
+    case keyMismatch
+    case pinHashMissing
+}
+
 final class HoldButton: NSButton {
     var onPressStart: (() -> Void)?
     var onPressEnd: (() -> Void)?
@@ -18,7 +35,7 @@ final class HoldButton: NSButton {
 }
 
 final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDelegate, NSTextFieldDelegate {
-    private let expectedHash: String
+    private let mode: UnlockMode
     private let lockFlagPath: String
 
     private let window = KeyableWindow()
@@ -30,8 +47,8 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
     private var monitorTimer: Timer?
     private var unlockResult = false
 
-    init(expectedHash: String, lockFlagPath: String) {
-        self.expectedHash = expectedHash
+    init(mode: UnlockMode, lockFlagPath: String) {
+        self.mode = mode
         self.lockFlagPath = lockFlagPath
     }
 
@@ -58,23 +75,54 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
             statusLabel.stringValue = "状態: Wi-Fiをオフにしてから解除してください"
             statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.55, alpha: 1.0)
             window.alphaValue = 1.0
-            passwordField.becomeFirstResponder()
+            window.makeFirstResponder(passwordField)
             return
         }
 
-        let inputHash = sha256(passwordField.stringValue)
-        if inputHash == expectedHash {
-            unlockResult = true
-            NSApp.stop(nil)
-            window.orderOut(nil)
-            return
-        }
+        switch mode {
+        case .usb(let policyFilePath):
+            guard let policy = loadUsbUnlockPolicy(from: policyFilePath) else {
+                statusLabel.stringValue = "状態: USB解除設定の読込に失敗しました"
+                statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.82, blue: 0.86, alpha: 1.0)
+                return
+            }
 
-        statusLabel.stringValue = "状態: 解除失敗（パスワードが正しくありません）"
-        statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.82, blue: 0.86, alpha: 1.0)
-        passwordField.stringValue = ""
-        window.alphaValue = 1.0
-        passwordField.becomeFirstResponder()
+            switch validateUsbKey(with: policy) {
+            case .usbNotFound:
+                statusLabel.stringValue = "状態: TA用USBまたは鍵ファイルが見つかりません"
+                statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.92, blue: 0.55, alpha: 1.0)
+                passwordField.stringValue = ""
+                window.makeFirstResponder(passwordField)
+                return
+            case .keyMismatch:
+                statusLabel.stringValue = "状態: TA用USBの鍵が一致しません"
+                statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.82, blue: 0.86, alpha: 1.0)
+                passwordField.stringValue = ""
+                window.makeFirstResponder(passwordField)
+                return
+            case .pinHashMissing:
+                statusLabel.stringValue = "状態: TA用USB内の PIN 設定が見つかりません"
+                statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.82, blue: 0.86, alpha: 1.0)
+                passwordField.stringValue = ""
+                window.makeFirstResponder(passwordField)
+                return
+            case .success(let pinHash):
+                let inputHash = sha256(passwordField.stringValue)
+                if inputHash == pinHash {
+                    unlockResult = true
+                    NSApp.stop(nil)
+                    window.orderOut(nil)
+                    return
+                }
+
+                statusLabel.stringValue = "状態: 解除失敗（TA用PINが正しくありません）"
+                statusLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.82, blue: 0.86, alpha: 1.0)
+                passwordField.stringValue = ""
+                window.alphaValue = 1.0
+                window.makeFirstResponder(passwordField)
+                return
+            }
+        }
     }
 
     @objc private func monitorLockFlag() {
@@ -120,6 +168,11 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
 
     private func setupContent() {
         guard let contentView = window.contentView else { return }
+        let isUsbMode: Bool
+        switch mode {
+        case .usb:
+            isUsbMode = true
+        }
 
         let iconView = NSImageView(frame: NSRect(x: 48, y: 500, width: 78, height: 78))
         iconView.image = NSImage(named: NSImage.cautionName)
@@ -146,15 +199,16 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
         guideLabel.textColor = NSColor(calibratedRed: 1.0, green: 0.95, blue: 0.68, alpha: 1.0)
         guideLabel.lineBreakMode = .byWordWrapping
         guideLabel.maximumNumberOfLines = 3
+        guideLabel.stringValue = "【TA用操作ガイド】\n・背景透過ボタンを長押しすると、背後の画面状況を確認できます。\n・Wi-Fi切断後に、TA用USBを接続し、TA用PINで解除してください。"
         contentView.addSubview(guideLabel)
 
         statusLabel.frame = NSRect(x: 50, y: 220, width: 880, height: 28)
         statusLabel.font = .systemFont(ofSize: 18, weight: .medium)
         statusLabel.textColor = NSColor(calibratedWhite: 0.86, alpha: 1.0)
-        statusLabel.stringValue = "状態: TA用パスワード待機中"
+        statusLabel.stringValue = "状態: TA用USB + PIN待機中"
         contentView.addSubview(statusLabel)
 
-        let pinLabel = NSTextField(labelWithString: "パスワード :")
+        let pinLabel = NSTextField(labelWithString: isUsbMode ? "PIN :" : "PIN :")
         pinLabel.frame = NSRect(x: 50, y: 146, width: 160, height: 34)
         pinLabel.font = .boldSystemFont(ofSize: 22)
         pinLabel.textColor = .white
@@ -204,6 +258,93 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
 
     private func startMonitoring() {
         monitorTimer = Timer.scheduledTimer(timeInterval: 1.0, target: self, selector: #selector(monitorLockFlag), userInfo: nil, repeats: true)
+    }
+
+    private func loadUsbUnlockPolicy(from policyFilePath: String) -> UsbUnlockPolicy? {
+        let challengeId = readKeyValue(from: policyFilePath, keyName: "challenge_id")
+        let requiredKeyFilename = readKeyValue(from: policyFilePath, keyName: "required_key_filename")
+        let keyHash = readKeyValue(from: policyFilePath, keyName: "key_hash")
+
+        guard
+            let challengeId,
+            let requiredKeyFilename,
+            let keyHash,
+            !challengeId.isEmpty,
+            !requiredKeyFilename.isEmpty,
+            !keyHash.isEmpty
+        else {
+            return nil
+        }
+
+        return UsbUnlockPolicy(
+            challengeId: challengeId,
+            requiredKeyFilename: requiredKeyFilename,
+            keyHash: keyHash
+        )
+    }
+
+    private func validateUsbKey(with policy: UsbUnlockPolicy) -> UsbKeyValidationResult {
+        let volumesURL = URL(fileURLWithPath: "/Volumes", isDirectory: true)
+        guard let volumeURLs = try? FileManager.default.contentsOfDirectory(at: volumesURL, includingPropertiesForKeys: nil) else {
+            return .usbNotFound
+        }
+
+        var foundCandidate = false
+
+        for volumeURL in volumeURLs {
+            let keyURL = volumeURL.appendingPathComponent(policy.requiredKeyFilename)
+            guard FileManager.default.fileExists(atPath: keyURL.path) else {
+                continue
+            }
+
+            foundCandidate = true
+
+            guard
+                let challengeId = readKeyValue(from: keyURL.path, keyName: "challenge_id"),
+                let unlockKey = readKeyValue(from: keyURL.path, keyName: "unlock_key")
+            else {
+                continue
+            }
+
+            guard challengeId == policy.challengeId else {
+                continue
+            }
+
+            let computedKeyHash = sha256(unlockKey)
+            if computedKeyHash == policy.keyHash {
+                guard
+                    let pinHash = readKeyValue(from: keyURL.path, keyName: "pin_hash"),
+                    !pinHash.isEmpty
+                else {
+                    return .pinHashMissing
+                }
+                return .success(pinHash: pinHash)
+            }
+        }
+
+        return foundCandidate ? .keyMismatch : .usbNotFound
+    }
+
+    private func readKeyValue(from filePath: String, keyName: String) -> String? {
+        guard let contents = try? String(contentsOfFile: filePath, encoding: .utf8) else {
+            return nil
+        }
+
+        for line in contents.components(separatedBy: .newlines) {
+            guard let separatorIndex = line.firstIndex(of: "=") else {
+                continue
+            }
+
+            let key = String(line[..<separatorIndex])
+            guard key == keyName else {
+                continue
+            }
+
+            let valueStartIndex = line.index(after: separatorIndex)
+            return String(line[valueStartIndex...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        return nil
     }
 
     private func sha256(_ value: String) -> String {
@@ -270,11 +411,12 @@ final class LockScreenController: NSObject, NSApplicationDelegate, NSWindowDeleg
     }
 }
 
-let expectedHash = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
+let modeArgument = CommandLine.arguments.count > 1 ? CommandLine.arguments[1] : ""
 let lockFlagPath = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : ""
+let mode = UnlockMode.usb(policyFilePath: modeArgument)
 
 let app = NSApplication.shared
-let delegate = LockScreenController(expectedHash: expectedHash, lockFlagPath: lockFlagPath)
+let delegate = LockScreenController(mode: mode, lockFlagPath: lockFlagPath)
 app.delegate = delegate
 let result = delegate.runResult()
 exit(result)

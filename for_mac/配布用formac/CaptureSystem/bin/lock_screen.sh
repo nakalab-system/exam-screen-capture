@@ -7,11 +7,9 @@
 ROOT_DIR="$(cd "$(dirname "$0")"/.. && pwd)"
 SAVE_DIR_FILE="/tmp/CaptureSystem_save_dir.txt"
 LOCK_SCREEN_PID_FILE="/tmp/CaptureSystem_lock_screen.pid"
-HASH_FILE="$ROOT_DIR/.ta_guard"
+POLICY_FILE="$ROOT_DIR/.ta_unlock_policy"
 STATUS_FILE="/tmp/CaptureSystem_status.json"
 SWIFT_SCRIPT="$ROOT_DIR/bin/lock_screen.swift"
-DEFAULT_HASH_PART1="9af15b336e6a9619928537df30b2e6a23"
-DEFAULT_HASH_PART2="76569fcf9d7e773eccede65606529a0"
 
 if [ ! -f "$SAVE_DIR_FILE" ]; then
     exit 1
@@ -35,12 +33,21 @@ cleanup() {
 trap cleanup EXIT TERM INT
 echo $$ > "$LOCK_SCREEN_PID_FILE"
 
-EXPECTED_HASH="${DEFAULT_HASH_PART1}${DEFAULT_HASH_PART2}"
-if [ -f "$HASH_FILE" ]; then
-    FILE_HASH=$(tr -d '\r\n[:space:]' < "$HASH_FILE")
-    if [ -n "$FILE_HASH" ]; then
-        EXPECTED_HASH="$FILE_HASH"
-    fi
+read_key_value() {
+    file_path="$1"
+    key_name="$2"
+
+    awk -F'=' -v key_name="$key_name" '$1 == key_name {print substr($0, index($0, "=") + 1); exit}' "$file_path" 2>/dev/null | tr -d '\r'
+}
+
+CHALLENGE_ID=""
+REQUIRED_KEY_FILENAME=""
+KEY_HASH=""
+
+if [ -f "$POLICY_FILE" ]; then
+    CHALLENGE_ID=$(read_key_value "$POLICY_FILE" "challenge_id")
+    REQUIRED_KEY_FILENAME=$(read_key_value "$POLICY_FILE" "required_key_filename")
+    KEY_HASH=$(read_key_value "$POLICY_FILE" "key_hash")
 fi
 
 test_internet_connectivity() {
@@ -64,26 +71,95 @@ test_internet_connectivity() {
     [ "$score" -ge 2 ]
 }
 
+find_usb_key_file() {
+    required_filename="$1"
+    expected_challenge="$2"
+
+    for volume_dir in /Volumes/*; do
+        [ -d "$volume_dir" ] || continue
+        candidate_file="$volume_dir/$required_filename"
+        [ -f "$candidate_file" ] || continue
+
+        candidate_challenge=$(read_key_value "$candidate_file" "challenge_id")
+        if [ -n "$expected_challenge" ] && [ "$candidate_challenge" != "$expected_challenge" ]; then
+            continue
+        fi
+
+        echo "$candidate_file"
+        return 0
+    done
+
+    return 1
+}
+
+validate_usb_key_file() {
+    key_file="$1"
+    expected_challenge="$2"
+    expected_key_hash="$3"
+
+    file_challenge=$(read_key_value "$key_file" "challenge_id")
+    unlock_key=$(read_key_value "$key_file" "unlock_key")
+
+    if [ -z "$file_challenge" ] || [ -z "$unlock_key" ]; then
+        return 1
+    fi
+
+    if [ "$file_challenge" != "$expected_challenge" ]; then
+        return 1
+    fi
+
+    computed_key_hash=$(printf '%s' "$unlock_key" | shasum -a 256 | awk '{print $1}')
+    [ "$computed_key_hash" = "$expected_key_hash" ]
+}
+
+read_usb_pin_hash() {
+    key_file="$1"
+    read_key_value "$key_file" "pin_hash"
+}
+
 while [ -f "$LOCK_FLAG" ]; do
+    if [ -z "$CHALLENGE_ID" ] || [ -z "$REQUIRED_KEY_FILENAME" ] || [ -z "$KEY_HASH" ]; then
+        osascript -e 'display dialog "【解除不可】\nUSB解除設定が見つかりません。\n\n`.ta_unlock_policy` を確認してください。\n緊急時は TA が `LOCK_ACTIVE.flag` を削除して復旧してください。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+        sleep 2
+        continue
+    fi
+
     if command -v swift >/dev/null 2>&1; then
-        swift "$SWIFT_SCRIPT" "$EXPECTED_HASH" "$LOCK_FLAG" &
+        swift "$SWIFT_SCRIPT" "$POLICY_FILE" "$LOCK_FLAG" &
         SWIFT_PID=$!
         wait "$SWIFT_PID"
         RESULT=$?
         SWIFT_PID=""
     else
-        INPUT_PASSWORD=$(osascript -e 'text returned of (display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、TA用パスワードが入力されるまでPCを操作しないでください。\n\n※ このMacでは簡易ロック画面で動作中です。" default answer "" with hidden answer buttons {"解除を実行"} default button "解除を実行" with icon stop)' 2>/dev/null)
+        INPUT_PASSWORD=$(osascript -e 'text returned of (display dialog "【警告】インターネット接続を検知しました。\n\nただちにTA（試験監督）を呼んでください。\nWi-Fiをオフにし、TA用USBを接続したうえで、TA用PINを入力してください。\n\n※ このMacでは簡易ロック画面で動作中です。" default answer "" with hidden answer buttons {"解除を実行"} default button "解除を実行" with icon stop)' 2>/dev/null)
 
         if test_internet_connectivity; then
             osascript -e 'display dialog "【解除不可】\nWi-Fiをオフにしてから解除してください。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
             RESULT=1
         else
-            INPUT_HASH=$(printf '%s' "$INPUT_PASSWORD" | shasum -a 256 | awk '{print $1}')
-            if [ "$INPUT_HASH" = "$EXPECTED_HASH" ]; then
-                RESULT=0
-            else
-                osascript -e 'display dialog "TA用パスワードが正しくありません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+            KEY_FILE=$(find_usb_key_file "$REQUIRED_KEY_FILENAME" "$CHALLENGE_ID")
+
+            if [ -z "$KEY_FILE" ]; then
+                osascript -e 'display dialog "【解除不可】\nTA用USBまたは鍵ファイルが見つかりません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
                 RESULT=1
+            elif ! validate_usb_key_file "$KEY_FILE" "$CHALLENGE_ID" "$KEY_HASH"; then
+                osascript -e 'display dialog "【解除不可】\nTA用USBの鍵が一致しません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+                RESULT=1
+            else
+                USB_PIN_HASH=$(read_usb_pin_hash "$KEY_FILE")
+                if [ -z "$USB_PIN_HASH" ]; then
+                    osascript -e 'display dialog "【解除不可】\nTA用USB内の PIN 設定が見つかりません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+                    RESULT=1
+                    continue
+                fi
+
+                INPUT_HASH=$(printf '%s' "$INPUT_PASSWORD" | shasum -a 256 | awk '{print $1}')
+                if [ "$INPUT_HASH" = "$USB_PIN_HASH" ]; then
+                    RESULT=0
+                else
+                    osascript -e 'display dialog "TA用PINが正しくありません。" buttons {"OK"} default button "OK" with icon caution' >/dev/null 2>&1
+                    RESULT=1
+                fi
             fi
         fi
     fi

@@ -48,30 +48,36 @@ public class Win32 {
     }
 
     function Test-InternetConnectivity {
-        param([int]$TimeoutMs = 1000)
-        $okPing = $false; $okDns = $false; $okHttp = $false
+        # まずWindowsが「ネットワークあり」と判断しているか確認
+        if (-not [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()) {
+            return $false
+        }
 
+        $okGw   = $false
+        $okDns  = $false
+
+        # デフォルトゲートウェイへのPing（ルーター内部通信なので外部通信に見えない）
         try {
-            $ping = New-Object System.Net.NetworkInformation.Ping
-            $reply = $ping.Send("8.8.8.8", $TimeoutMs)
-            if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) { $okPing = $true }
+            $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
+                   Sort-Object RouteMetric | Select-Object -First 1).NextHop
+            if ($gw) {
+                $ping  = New-Object System.Net.NetworkInformation.Ping
+                $reply = $ping.Send($gw, 1000)
+                if ($reply.Status -eq [System.Net.NetworkInformation.IPStatus]::Success) {
+                    $okGw = $true
+                }
+            }
         } catch {}
 
+        # DNS解決（外部サイト名は使わずWindowsのNLA情報で判断）
         try {
-            $null = [System.Net.Dns]::GetHostAddresses("www.google.com")
-            $okDns = $true
+            $profile = Get-NetConnectionProfile -ErrorAction Stop |
+                       Where-Object { $_.IPv4Connectivity -eq 'Internet' -or $_.IPv6Connectivity -eq 'Internet' }
+            if ($profile) { $okDns = $true }
         } catch {}
 
-        try {
-            $resp = Invoke-WebRequest -Uri "http://clients3.google.com/generate_204" -Method Get -TimeoutSec 3 -UseBasicParsing
-            if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 400) { $okHttp = $true }
-        } catch {}
-
-        $score = 0
-        if ($okPing) { $score++ }
-        if ($okDns)  { $score++ }
-        if ($okHttp) { $score++ }
-        return ($score -ge 2)
+        # 2条件のうち1つ以上でオンライン判定（外部への実通信ゼロ）
+        return ($okGw -or $okDns)
     }
 
     function Test-TaUsbUnlock {
@@ -82,7 +88,7 @@ public class Win32 {
 
             $drives = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.DriveType -eq 'Removable' -and $_.IsReady }
             foreach ($d in $drives) {
-                $root = $d.RootDirectory.FullName
+                $root    = $d.RootDirectory.FullName
                 $keyPath = Join-Path $root $KEY_FILENAME
                 $pfxPath = Join-Path $root $PFX_FILENAME
 
@@ -91,8 +97,8 @@ public class Win32 {
 
                 try {
                     $flags = [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::Exportable
-                    $cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $Pin, $flags)
-                    $tp = Normalize-Thumbprint $cert.Thumbprint
+                    $cert  = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($pfxPath, $Pin, $flags)
+                    $tp    = Normalize-Thumbprint $cert.Thumbprint
                     if ($tp -eq $target) { return $true }
                 } catch {
                     continue
@@ -108,11 +114,6 @@ public class Win32 {
         if ($script:lockScreenOpen) { return }
         $script:lockScreenOpen = $true
 
-        $script:lockFlagPath = Join-Path $script:saveDir "LOCK_ACTIVE.flag"
-        try {
-            (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Out-File -FilePath $script:lockFlagPath -Encoding UTF8 -Force
-        } catch {}
-
         try {
             $lockForm = New-Object System.Windows.Forms.Form
             $lockForm.Size = New-Object System.Drawing.Size(980, 600)
@@ -121,6 +122,7 @@ public class Win32 {
             $lockForm.TopMost = $true
             $lockForm.BackColor = [System.Drawing.Color]::DarkRed
             $lockForm.ShowInTaskbar = $false
+            $lockForm.Opacity = 1.0
 
             $lblTitle = New-Object System.Windows.Forms.Label
             $lblTitle.Text = "【警告】インターネット接続を検知しました"
@@ -192,46 +194,46 @@ public class Win32 {
             $lockForm.Controls.Add($btnPeek)
 
             $btnPeek.Add_MouseDown({ $lockForm.Opacity = 0.1 })
-            $btnPeek.Add_MouseUp({ $lockForm.Opacity = 1.0 })
-            $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 }) 
+            $btnPeek.Add_MouseUp({   $lockForm.Opacity = 1.0 })
+            $btnPeek.Add_MouseLeave({ $lockForm.Opacity = 1.0 })
 
             $lockForm.AcceptButton = $btnSubmit
 
-            $script:isLocked = $true
-            $script:unlockBusy = $false
+            $script:isLocked    = $true
+            $script:unlockBusy  = $false
 
             $btnSubmit.Add_Click({
                 if ($script:unlockBusy) { return }
-                
+
                 if ($REQUIRE_PIN -and [string]::IsNullOrWhiteSpace($tbPin.Text)) {
                     $lblStatus.Text = "状態: PINを入力してください"
                     return
                 }
 
-                $script:unlockBusy = $true
-                $btnSubmit.Enabled = $false 
-                $tbPin.Enabled = $false
-                
+                $script:unlockBusy      = $true
+                $btnSubmit.Enabled      = $false
+                $tbPin.Enabled          = $false
+
                 try {
-                    $lblStatus.Text = "状態: 検証中..."
+                    $lblStatus.Text      = "状態: 検証中..."
                     $lblStatus.ForeColor = [System.Drawing.Color]::Yellow
                     [System.Windows.Forms.Application]::DoEvents()
 
                     if (Test-TaUsbUnlock -Pin $tbPin.Text) {
-                        $lblStatus.Text = "状態: 解除成功"
+                        $lblStatus.Text      = "状態: 解除成功"
                         $lblStatus.ForeColor = [System.Drawing.Color]::LimeGreen
-                        $script:isLocked = $false
+                        $script:isLocked     = $false
                         Start-Sleep -Milliseconds 500
                         $lockForm.Close()
                     } else {
-                        $lblStatus.Text = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
+                        $lblStatus.Text      = "状態: 解除失敗（USBが挿入されていないか，PINが間違っています）"
                         $lblStatus.ForeColor = [System.Drawing.Color]::LightPink
-                        $tbPin.Text = "" 
+                        $tbPin.Text          = ""
                     }
                 } finally {
-                    $script:unlockBusy = $false
-                    $btnSubmit.Enabled = $true
-                    $tbPin.Enabled = $true
+                    $script:unlockBusy  = $false
+                    $btnSubmit.Enabled  = $true
+                    $tbPin.Enabled      = $true
                     $tbPin.Focus()
                 }
             })
@@ -250,11 +252,6 @@ public class Win32 {
             [void]$lockForm.ShowDialog()
         } finally {
             $script:lockScreenOpen = $false
-            try {
-                if (Test-Path $script:lockFlagPath) {
-                    Remove-Item $script:lockFlagPath -Force -ErrorAction SilentlyContinue
-                }
-            } catch {}
         }
     }
 
@@ -262,10 +259,10 @@ public class Win32 {
     # ==========================================
     # ディレクトリ・学籍番号等の初期化
     # ==========================================
-    $script:baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-    $todayStr = Get-Date -Format "yyyyMMdd"
-    $targetFolder = $null
-    $foundStudentId = ""
+    $script:baseDir  = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+    $todayStr        = Get-Date -Format "yyyyMMdd"
+    $targetFolder    = $null
+    $foundStudentId  = ""
 
     $allFolders = @(Get-ChildItem -Path $script:baseDir -Directory -Force -ErrorAction SilentlyContinue)
 
@@ -273,7 +270,7 @@ public class Win32 {
         if ($f.Name -match "^([0-9]{8})_($todayStr)$") {
             $sid = $matches[1]
             if (Test-Path (Join-Path -Path $f.FullName -ChildPath "student_id.txt")) {
-                $targetFolder = $f
+                $targetFolder   = $f
                 $foundStudentId = $sid
                 break
             }
@@ -283,40 +280,35 @@ public class Win32 {
     # 万が一 start.ps1 を経由せずに直接起動された場合は、Unknownを作らずに即座に終了する
     if (-not $targetFolder) { exit }
 
-    $script:saveDir = $targetFolder.FullName
-    $script:studentId = $foundStudentId
+    $script:saveDir    = $targetFolder.FullName
+    $script:studentId  = $foundStudentId
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "${script:studentId}_*.jpg" -File -ErrorAction SilentlyContinue).Count
-
-    $staleLockFlag = Join-Path $script:saveDir "LOCK_ACTIVE.flag"
-    if (Test-Path $staleLockFlag) {
-        Remove-Item $staleLockFlag -Force -ErrorAction SilentlyContinue
-    }
 
     # ==========================================
     # バーの横幅計算・UI初期化
     # ==========================================
-    $textFont = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
-    $dummyText = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  " 
-    $textSize = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
-    $formWidth = $textSize.Width + 30
+    $textFont   = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
+    $dummyText  = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  "
+    $textSize   = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
+    $formWidth  = $textSize.Width + 30
 
     $initialText = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, (Get-Date -Format 'HH:mm')
 
     $script:barForm = New-Object System.Windows.Forms.Form
-    $script:barForm.Size = New-Object System.Drawing.Size($formWidth, 22)
+    $script:barForm.Size            = New-Object System.Drawing.Size($formWidth, 22)
     $script:barForm.FormBorderStyle = "None"
-    $script:barForm.TopMost = $true
-    $script:barForm.ShowInTaskbar = $false
-    $script:barForm.StartPosition = "Manual"
-    $script:barForm.Location = New-Object System.Drawing.Point(([int]([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width / 2) - [int]($formWidth / 2)), 0)
-    $script:barForm.BackColor = [System.Drawing.Color]::Black
+    $script:barForm.TopMost         = $true
+    $script:barForm.ShowInTaskbar   = $false
+    $script:barForm.StartPosition   = "Manual"
+    $script:barForm.Location        = New-Object System.Drawing.Point(([int]([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width / 2) - [int]($formWidth / 2)), 0)
+    $script:barForm.BackColor       = [System.Drawing.Color]::Black
 
     $script:label = New-Object System.Windows.Forms.Label
-    $script:label.ForeColor = [System.Drawing.Color]::Yellow
-    $script:label.Dock = "Fill"
-    $script:label.TextAlign = "MiddleCenter"
-    $script:label.Font = $textFont
-    $script:label.Text = $initialText
+    $script:label.ForeColor  = [System.Drawing.Color]::Yellow
+    $script:label.Dock       = "Fill"
+    $script:label.TextAlign  = "MiddleCenter"
+    $script:label.Font       = $textFont
+    $script:label.Text       = $initialText
     $script:barForm.Controls.Add($script:label)
 
     $script:barForm.Add_FormClosing({ $_.Cancel = $true })
@@ -326,15 +318,16 @@ public class Win32 {
     [void][Win32]::SetWindowLong($script:barForm.Handle, [Win32]::GWL_EXSTYLE, $style -bor [Win32]::WS_EX_LAYERED -bor [Win32]::WS_EX_TRANSPARENT)
     [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
 
-    # ホバー時の半透明化タイマー (Start-Sleep排除により動作が格段に滑らかになります)
+    # ホバー時の半透明化タイマー
     $hoverTimer = New-Object System.Windows.Forms.Timer
-    $hoverTimer.Interval = 100 
+    $hoverTimer.Interval = 100
     $hoverTimer.Add_Tick({
         [void][Win32]::SetWindowPos($script:barForm.Handle, -1, 0, 0, 0, 0, 19)
-        $pt = [System.Windows.Forms.Cursor]::Position
-        $isHover = ($pt.X -ge $script:barForm.Left -and $pt.X -le ($script:barForm.Left + $script:barForm.Width) -and $pt.Y -ge $script:barForm.Top -and $pt.Y -le ($script:barForm.Top + $script:barForm.Height))
+        $pt      = [System.Windows.Forms.Cursor]::Position
+        $isHover = ($pt.X -ge $script:barForm.Left -and $pt.X -le ($script:barForm.Left + $script:barForm.Width) -and
+                    $pt.Y -ge $script:barForm.Top  -and $pt.Y -le ($script:barForm.Top  + $script:barForm.Height))
         if ($isHover) {
-            [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 10, [Win32]::LWA_ALPHA)
+            [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 10,  [Win32]::LWA_ALPHA)
         } else {
             [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
         }
@@ -349,7 +342,7 @@ public class Win32 {
     $captureTimer.Interval = 1000
     $captureTimer.Add_Tick({
         $now = Get-Date
-        
+
         $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
 
         if ($now -ge $script:nextCaptureTime) {
@@ -358,27 +351,27 @@ public class Win32 {
                 foreach ($screen in [System.Windows.Forms.Screen]::AllScreens) {
                     if ($screen.Bounds.X -lt $minX) { $minX = $screen.Bounds.X }
                     if ($screen.Bounds.Y -lt $minY) { $minY = $screen.Bounds.Y }
-                    if (($screen.Bounds.X + $screen.Bounds.Width) -gt $maxX) { $maxX = ($screen.Bounds.X + $screen.Bounds.Width) }
+                    if (($screen.Bounds.X + $screen.Bounds.Width)  -gt $maxX) { $maxX = ($screen.Bounds.X + $screen.Bounds.Width)  }
                     if (($screen.Bounds.Y + $screen.Bounds.Height) -gt $maxY) { $maxY = ($screen.Bounds.Y + $screen.Bounds.Height) }
                 }
                 $totalW = $maxX - $minX; $totalH = $maxY - $minY
-                
+
                 if ($totalW -eq 0 -or $totalH -eq 0) {
                     $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
                     $totalW = $bounds.Width; $totalH = $bounds.Height
-                    $minX = $bounds.X; $minY = $bounds.Y
+                    $minX   = $bounds.X;    $minY   = $bounds.Y
                 }
-                
+
                 $boundsSize = New-Object System.Drawing.Size($totalW, $totalH)
-                $bmp = New-Object System.Drawing.Bitmap($totalW, $totalH)
-                $g = [System.Drawing.Graphics]::FromImage($bmp)
+                $bmp        = New-Object System.Drawing.Bitmap($totalW, $totalH)
+                $g          = [System.Drawing.Graphics]::FromImage($bmp)
                 $g.CopyFromScreen($minX, $minY, 0, 0, $boundsSize)
 
                 $script:captureCount++
                 $timestamp = $now.ToString('HHmmss')
-                $countStr = "{0:D3}" -f $script:captureCount
-                $fileName = "{0}_{1}_{2}.jpg" -f $script:studentId, $countStr, $timestamp
-                $filePath = Join-Path $script:saveDir $fileName
+                $countStr  = "{0:D3}" -f $script:captureCount
+                $fileName  = "{0}_{1}_{2}.jpg" -f $script:studentId, $countStr, $timestamp
+                $filePath  = Join-Path $script:saveDir $fileName
                 $bmp.Save($filePath, [System.Drawing.Imaging.ImageFormat]::Jpeg)
 
                 $script:label.Text = "[{0}] 試験中: {1}枚 ({2})" -f $script:studentId, $script:captureCount, $now.ToString('HH:mm')
@@ -398,12 +391,12 @@ public class Win32 {
     # ==========================================
     $script:nextPingTime = Get-Date
     $networkTimer = New-Object System.Windows.Forms.Timer
-    $networkTimer.Interval = 500 # 0.5秒ごとにチェックの機会を伺う
+    $networkTimer.Interval = 500
     $networkTimer.Add_Tick({
         $now = Get-Date
-        if ($now -ge $script:nextPingTime) {
+        if ($now -ge $script:nextPingTime -and -not $script:lockScreenOpen) {
             try {
-                if ((-not $script:lockScreenOpen) -and (Test-InternetConnectivity)) {
+                if (Test-InternetConnectivity) {
                     "[$(Get-Date -Format 'HH:mm:ss')] インターネット接続を検知" | Out-File "$script:saveDir\network_warning.log" -Append -Encoding UTF8
                     Show-LockScreen
                 }

@@ -288,7 +288,7 @@ try {
     $script:barForm.BackColor       = [System.Drawing.Color]::Black
 
     $script:label = New-Object System.Windows.Forms.Label
-    $script:label.ForeColor  = [System.Drawing.Color]::Yellow
+    $script:label.ForeColor  = [System.Drawing.Color]::Cyan
     $script:label.Dock       = "Fill"
     $script:label.TextAlign  = "MiddleCenter"
     $script:label.Font       = $textFont
@@ -300,7 +300,7 @@ try {
 
     $style = [Win32]::GetWindowLong($script:barForm.Handle, [Win32]::GWL_EXSTYLE)
     [void][Win32]::SetWindowLong($script:barForm.Handle, [Win32]::GWL_EXSTYLE, $style -bor [Win32]::WS_EX_LAYERED -bor [Win32]::WS_EX_TRANSPARENT)
-    [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
+    [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 210, [Win32]::LWA_ALPHA)
 
     $hoverTimer = New-Object System.Windows.Forms.Timer
     $hoverTimer.Interval = 100
@@ -312,7 +312,7 @@ try {
         if ($isHover) {
             [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 10,  [Win32]::LWA_ALPHA)
         } else {
-            [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
+            [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 210, [Win32]::LWA_ALPHA)
         }
     })
     $hoverTimer.Start()

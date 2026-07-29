@@ -93,14 +93,6 @@ if [ -f "$ID_FILE" ]; then
 
     ZIP_PATH="$ANSWER_DIR/$ZIP_NAME"
     
-    rm -f "$PID_FILE"
-    rm -f "$MONITOR_PID_FILE"
-    rm -f "$LOCK_SCREEN_PID_FILE"
-    rm -f "$STATUS_BAR_PID_FILE"
-    rm -f "$SAVE_DIR_FILE"
-    rm -f "$ANSWER_DIR_FILE"
-    rm -f "$STATUS_FILE"
-    
     # 既存の同名ファイルがあれば、削除せずに末尾へ _2, _3... を付けて回避
     if [ -e "$ZIP_PATH" ]; then
         base="${ZIP_PATH%.*}"
@@ -116,7 +108,24 @@ if [ -f "$ID_FILE" ]; then
     fi
     
     # 保存フォルダ内の全データをZIP化
-    (cd "$SAVE_DIR" && zip -r "$ZIP_PATH" ./* > /dev/null)
+    ZIP_SUCCESS=0
+    if (cd "$SAVE_DIR" && zip -r "$ZIP_PATH" . > /dev/null); then
+        ZIP_SUCCESS=1
+    fi
+
+    if [ "$ZIP_SUCCESS" -ne 1 ] || [ ! -f "$ZIP_PATH" ]; then
+        rm -f "$ZIP_PATH"
+        osascript -e 'display dialog "【エラー】\nZIP の作成に失敗しました。\n\n元データは削除していません。状況を確認してから再度 finish.sh を実行してください。" buttons {"OK"} default button "OK" with icon stop' >/dev/null 2>&1
+        exit 1
+    fi
+
+    rm -f "$PID_FILE"
+    rm -f "$MONITOR_PID_FILE"
+    rm -f "$LOCK_SCREEN_PID_FILE"
+    rm -f "$STATUS_BAR_PID_FILE"
+    rm -f "$SAVE_DIR_FILE"
+    rm -f "$ANSWER_DIR_FILE"
+    rm -f "$STATUS_FILE"
 
     # 4. クリーンアップ
     rm -rf "$SAVE_DIR"

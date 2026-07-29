@@ -146,7 +146,6 @@ else
         if unzip -oq "$RESTORE_ZIP" -d "$TEMP_EXTRACT" >/dev/null 2>&1; then
             cp -R "$TEMP_EXTRACT"/. "$SAVE_DIR"/
             rm -rf "$TEMP_EXTRACT"
-            rm -f "$RESTORE_ZIP"
             osascript -e "display dialog \"【復元再開】\n提出済みZIPが見つかりました。\n\n学籍番号: $STUDENT_ID\n\n証拠データを復元してキャプチャを再開します。\" buttons {\"OK\"} default button \"OK\" with icon note" >/dev/null 2>&1
         else
             rm -rf "$TEMP_EXTRACT"
@@ -167,6 +166,7 @@ else
 fi
 
 ID_FILE="$SAVE_DIR/student_id.txt"
+LOCK_FLAG="$SAVE_DIR/LOCK_ACTIVE.flag"
 ANSWER_DIR_NAME="${STUDENT_ID}_${TODAY_STR}"
 ANSWER_DIR_DESKTOP="$DESKTOP_DIR/$ANSWER_DIR_NAME"
 ANSWER_DIR_DOWNLOADS="$DOWNLOADS_DIR/$ANSWER_DIR_NAME"
@@ -176,6 +176,24 @@ if [ -d "$SAVE_DIR" ]; then
     chflags -R nouchg "$SAVE_DIR"
 fi
 mkdir -p "$SAVE_DIR"
+
+# 異常終了や再起動後に古いロックフラグだけが残っていた場合は除去する
+if [ -f "$LOCK_FLAG" ]; then
+    STALE_LOCK=1
+
+    if [ -f "$LOCK_SCREEN_PID_FILE" ]; then
+        LOCK_PID=$(cat "$LOCK_SCREEN_PID_FILE" 2>/dev/null)
+        if [ -n "$LOCK_PID" ] && ps -p "$LOCK_PID" >/dev/null 2>&1; then
+            STALE_LOCK=0
+        else
+            rm -f "$LOCK_SCREEN_PID_FILE"
+        fi
+    fi
+
+    if [ "$STALE_LOCK" -eq 1 ]; then
+        rm -f "$LOCK_FLAG"
+    fi
+fi
 
 chflags hidden "$SAVE_DIR"
 

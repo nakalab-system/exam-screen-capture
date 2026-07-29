@@ -1,4 +1,8 @@
 ﻿$ErrorActionPreference = 'Stop'
+# 変更履歴
+# 2026-07-29: エラーログの出力先をDesktop（OneDrive同期でハングしうる）からローカルの
+#             保存フォルダ/LOCALAPPDATAに変更。UIスレッド（タイマーTick）がOneDrive由来の
+#             ハングで固まる経路を排除。
 
 $win32 = @"
 using System;
@@ -358,7 +362,9 @@ try {
 
                 $g.Dispose(); $bmp.Dispose()
             } catch {
-                "Capture Error at $($now.ToString()): $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\capture_error.log" -Append -Encoding UTF8
+                try {
+                    "Capture Error at $($now.ToString()): $_" | Out-File "$script:saveDir\capture_error.log" -Append -Encoding UTF8
+                } catch {}
             }
 
             $script:nextCaptureTime = $now.AddSeconds((Get-Random -Minimum 1 -Maximum 60))
@@ -386,5 +392,7 @@ try {
     [System.Windows.Forms.Application]::Run($script:barForm)
 
 } catch {
-    (Get-Date).ToString() + " Fatal: $_" | Out-File "$([Environment]::GetFolderPath('Desktop'))\debug.log" -Append -Encoding UTF8
+    try {
+        (Get-Date).ToString() + " Fatal: $_" | Out-File "$env:TEMP\capture_debug.log" -Append -Encoding UTF8
+    } catch {}
 }

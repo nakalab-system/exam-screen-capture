@@ -1,24 +1,11 @@
 ﻿$ErrorActionPreference = 'Stop'
 
-# DPI対応
-$pinvoke = @"
+$win32 = @"
 using System;
 using System.Runtime.InteropServices;
 public class DpiAware {
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 }
-"@
-Add-Type -TypeDefinition $pinvoke
-[DpiAware]::SetProcessDPIAware()
-
-try {
-    Add-Type -AssemblyName System.Windows.Forms
-    Add-Type -AssemblyName System.Drawing
-
-    # Win32 helper
-    $win32 = @"
-using System;
-using System.Runtime.InteropServices;
 public class Win32 {
     public const int WS_EX_LAYERED = 0x80000;
     public const int WS_EX_TRANSPARENT = 0x20;
@@ -31,11 +18,13 @@ public class Win32 {
     public const int LWA_ALPHA = 0x2;
 }
 "@
-    Add-Type -TypeDefinition $win32
+Add-Type -TypeDefinition $win32
+[DpiAware]::SetProcessDPIAware()
 
-    # =========================
-    # 設定
-    # =========================
+try {
+    Add-Type -AssemblyName System.Windows.Forms
+    Add-Type -AssemblyName System.Drawing
+
     $KEY_FILENAME = "TA_unlock.key"
     $PFX_FILENAME = "ta_unlock.pfx"
     $ALLOWED_CERT_THUMBPRINT = "78B8D5AB594E14DEA918FB22BC126953D26407AC"
@@ -48,7 +37,6 @@ public class Win32 {
     }
 
     function Test-InternetConnectivity {
-        # まずWindowsが「ネットワークあり」と判断しているか確認
         if (-not [System.Net.NetworkInformation.NetworkInterface]::GetIsNetworkAvailable()) {
             return $false
         }
@@ -56,7 +44,6 @@ public class Win32 {
         $okGw   = $false
         $okDns  = $false
 
-        # デフォルトゲートウェイへのPing（ルーター内部通信なので外部通信に見えない）
         try {
             $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction Stop |
                    Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -69,14 +56,12 @@ public class Win32 {
             }
         } catch {}
 
-        # DNS解決（外部サイト名は使わずWindowsのNLA情報で判断）
         try {
             $profile = Get-NetConnectionProfile -ErrorAction Stop |
                        Where-Object { $_.IPv4Connectivity -eq 'Internet' -or $_.IPv6Connectivity -eq 'Internet' }
             if ($profile) { $okDns = $true }
         } catch {}
 
-        # 2条件のうち1つ以上でオンライン判定（外部への実通信ゼロ）
         return ($okGw -or $okDns)
     }
 
@@ -109,10 +94,15 @@ public class Win32 {
     }
 
     $script:lockScreenOpen = $false
+    $SESSION_STATE_FILENAME = "session.dat"
 
     function Show-LockScreen {
         if ($script:lockScreenOpen) { return }
         $script:lockScreenOpen = $true
+
+        try {
+            (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') | Out-File -FilePath (Join-Path $script:saveDir $SESSION_STATE_FILENAME) -Encoding UTF8 -Force
+        } catch {}
 
         try {
             $lockForm = New-Object System.Windows.Forms.Form
@@ -120,7 +110,7 @@ public class Win32 {
             $lockForm.StartPosition = "CenterScreen"
             $lockForm.FormBorderStyle = "None"
             $lockForm.TopMost = $true
-            $lockForm.BackColor = [System.Drawing.Color]::DarkRed
+            $lockForm.BackColor = [System.Drawing.Color]::MidnightBlue
             $lockForm.ShowInTaskbar = $false
             $lockForm.Opacity = 1.0
 
@@ -252,13 +242,11 @@ public class Win32 {
             [void]$lockForm.ShowDialog()
         } finally {
             $script:lockScreenOpen = $false
+            try { Remove-Item -Path (Join-Path $script:saveDir $SESSION_STATE_FILENAME) -Force -ErrorAction SilentlyContinue } catch {}
         }
     }
 
 
-    # ==========================================
-    # ディレクトリ・学籍番号等の初期化
-    # ==========================================
     $script:baseDir  = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
     $todayStr        = Get-Date -Format "yyyyMMdd"
     $targetFolder    = $null
@@ -277,16 +265,12 @@ public class Win32 {
         }
     }
 
-    # 万が一 start.ps1 を経由せずに直接起動された場合は、Unknownを作らずに即座に終了する
     if (-not $targetFolder) { exit }
 
     $script:saveDir    = $targetFolder.FullName
     $script:studentId  = $foundStudentId
     [int]$script:captureCount = @(Get-ChildItem -Path $script:saveDir -Filter "${script:studentId}_*.jpg" -File -ErrorAction SilentlyContinue).Count
 
-    # ==========================================
-    # バーの横幅計算・UI初期化
-    # ==========================================
     $textFont   = New-Object System.Drawing.Font("Meiryo UI", 9, [System.Drawing.FontStyle]::Bold)
     $dummyText  = "  [$($script:studentId)] 試験中: 9999枚 (23:59)  "
     $textSize   = [System.Windows.Forms.TextRenderer]::MeasureText($dummyText, $textFont)
@@ -318,7 +302,6 @@ public class Win32 {
     [void][Win32]::SetWindowLong($script:barForm.Handle, [Win32]::GWL_EXSTYLE, $style -bor [Win32]::WS_EX_LAYERED -bor [Win32]::WS_EX_TRANSPARENT)
     [void][Win32]::SetLayeredWindowAttributes($script:barForm.Handle, 0, 150, [Win32]::LWA_ALPHA)
 
-    # ホバー時の半透明化タイマー
     $hoverTimer = New-Object System.Windows.Forms.Timer
     $hoverTimer.Interval = 100
     $hoverTimer.Add_Tick({
@@ -334,9 +317,6 @@ public class Win32 {
     })
     $hoverTimer.Start()
 
-    # ==========================================
-    # 画面キャプチャ専用タイマー
-    # ==========================================
     $script:nextCaptureTime = Get-Date
     $captureTimer = New-Object System.Windows.Forms.Timer
     $captureTimer.Interval = 1000
@@ -386,9 +366,6 @@ public class Win32 {
     })
     $captureTimer.Start()
 
-    # ==========================================
-    # ネットワーク監視専用タイマー
-    # ==========================================
     $script:nextPingTime = Get-Date
     $networkTimer = New-Object System.Windows.Forms.Timer
     $networkTimer.Interval = 500

@@ -1,6 +1,38 @@
 ﻿$baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
+
+function Test-IsOneDrivePath {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $false }
+    if ($env:OneDrive -and $Path.StartsWith($env:OneDrive, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    if ($env:OneDriveCommercial -and $Path.StartsWith($env:OneDriveCommercial, [System.StringComparison]::OrdinalIgnoreCase)) { return $true }
+    if ($Path -match '\\OneDrive(\s*-\s*[^\\]+)?\\') { return $true }
+    return $false
+}
+
+function Get-CandidateAnswerRoots {
+    $roots = New-Object System.Collections.Generic.List[string]
+
+    $shellDesktop = [Environment]::GetFolderPath('Desktop')
+    if (-not (Test-IsOneDrivePath $shellDesktop)) { $roots.Add($shellDesktop) }
+
+    $trueDesktop = Join-Path $env:USERPROFILE 'Desktop'
+    if (-not (Test-IsOneDrivePath $trueDesktop)) { $roots.Add($trueDesktop) }
+
+    $downloads = Join-Path $env:USERPROFILE 'Downloads'
+    if (-not (Test-IsOneDrivePath $downloads)) { $roots.Add($downloads) }
+
+    $roots.Add("C:\ExamSystem")
+
+    $seen = @{}
+    $result = @()
+    foreach ($r in $roots) {
+        if (-not $seen.ContainsKey($r)) { $seen[$r] = $true; $result += $r }
+    }
+    return $result
+}
+
+$candidateRoots = Get-CandidateAnswerRoots
 $desktopPath = [Environment]::GetFolderPath('Desktop')
-$downloadsPath = "$([Environment]::GetFolderPath('UserProfile'))\Downloads"
 
 Write-Host "=========================================="
 Write-Host " 　　　提出準備　　　 "
@@ -9,8 +41,8 @@ Write-Host ""
 
 $subDirCheck = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($subDirCheck) {
-    $lockFlagPath = Join-Path $subDirCheck.FullName "LOCK_ACTIVE.flag"
-    if (Test-Path $lockFlagPath) {
+    $sessionStatePath = Join-Path $subDirCheck.FullName "session.dat"
+    if (Test-Path $sessionStatePath) {
         Write-Host "==================================================" -ForegroundColor Red
         Write-Host " [提出不可] インターネット接続の警告画面が表示中です．" -ForegroundColor Red
         Write-Host " TAによる解除が完了するまで提出処理は実行できません．" -ForegroundColor Red
@@ -20,8 +52,8 @@ if ($subDirCheck) {
     }
 }
 
-# 偽装したプロセス名（WinSysMonitor.exe）を狙って停止する
-$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'WinSysMonitor.exe' }
+$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -like '*system_core.ps1*' }
 if ($processes) {
     foreach ($p in $processes) {
         $p | Invoke-CimMethod -MethodName Terminate | Out-Null
@@ -37,22 +69,19 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
     $savedDate = $matches[2]
     $datetime = Get-Date -Format "yyyyMMdd_HHmmss"
     
-    $answerDirDesktop = "$desktopPath\${studentId}_${savedDate}"
-    $answerDirDownloads = "$downloadsPath\${studentId}_${savedDate}"
-    
     $zipName = "${studentId}_${datetime}.zip"
     $tempZip = "$env:TEMP\$zipName"
-    
+
     Write-Host "キャプチャ画像を圧縮しています... " -ForegroundColor Cyan
-    
+
     Compress-Archive -Path "$saveDir\*" -DestinationPath $tempZip -Force
 
     $targetDir = ""
-    if (Test-Path $answerDirDesktop) {
-        $targetDir = $answerDirDesktop
-    } elseif (Test-Path $answerDirDownloads) {
-        $targetDir = $answerDirDownloads
-    } else {
+    foreach ($root in $candidateRoots) {
+        $candidate = "$root\${studentId}_${savedDate}"
+        if (Test-Path $candidate) { $targetDir = $candidate; break }
+    }
+    if (-not $targetDir) {
         $targetDir = $desktopPath
         Write-Host "[警告] 解答用フォルダが見つからないため，デスクトップ直下に保存します．" -ForegroundColor Yellow
     }

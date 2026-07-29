@@ -1,8 +1,4 @@
 ﻿$ErrorActionPreference = 'Stop'
-# 変更履歴
-# 2026-07-29: エラーログの出力先をDesktop（OneDrive同期でハングしうる）からローカルの
-#             保存フォルダ/LOCALAPPDATAに変更。UIスレッド（タイマーTick）がOneDrive由来の
-#             ハングで固まる経路を排除。
 
 $win32 = @"
 using System;

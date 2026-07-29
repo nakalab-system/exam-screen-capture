@@ -1,10 +1,4 @@
-$baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-
-# 変更履歴
-# 2026-07-29: OneDrive環境でハングしうる処理（解答フォルダ探索・ZIP移動）を
-#             start.ps1と同じタイムアウト保護方式(Invoke-WithTimeout)に統一。
-#             失敗・タイムアウト時はZIPをTEMPに残したまま明示的に警告し、
-#             無言で失敗させないようにした。
+﻿$baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
 
 function Test-IsOneDrivePath {
     param([string]$Path)
@@ -111,7 +105,6 @@ if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
 
     Compress-Archive -Path "$saveDir\*" -DestinationPath $tempZip -Force
 
-    # start.ps1が作成した解答フォルダを、同じ優先順位・タイムアウト保護で探索する
     $targetDir = ""
     $dirSearchTimeoutSec = [Math]::Round((($candidateRoots.Count + 1) * 2), 1)
     Write-Host "[処理中] 回答用フォルダを探しています...（最大${dirSearchTimeoutSec}秒）" -ForegroundColor Cyan

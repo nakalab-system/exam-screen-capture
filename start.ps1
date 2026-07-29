@@ -1,14 +1,6 @@
-Write-Host "=========================================="
+﻿Write-Host "=========================================="
 Write-Host " 画面キャプチャ システム起動 "
 Write-Host "=========================================="
-
-# 変更履歴
-# 2026-07-29: OneDrive同期環境でキャプチャが起動しない障害への対応。
-#             監視プロセス(capture.ps1)のStart-Processを最優先の位置に移動し、
-#             OneDriveでハングしうる処理（誤提出ZIP探索・回答フォルダ作成）は
-#             全てタイムアウト保護(Invoke-WithTimeout)した上でStart-Processの
-#             前後に配置し直した。回答フォルダ作成はStart-Processの後に回し、
-#             失敗しても監視プロセス自体は必ず起動を継続する構成にした。
 
 $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
 
@@ -77,10 +69,6 @@ function Get-CandidateAnswerRoots {
     return $result
 }
 
-# 別スレッド(ランスペース)でスクリプトブロックを実行し、指定ミリ秒で応答がなければ
-# 呼び出し元スレッドを解放して先に進む。OneDrive等が原因でファイルI/Oがハングしても
-# メインの実行フローを止めないための保険。ハングしたスレッド自体は明示的に止めず、
-# プロセス終了時のOS回収に任せる（Stop()呼び出し自体がブロックしうるため）。
 function Invoke-WithTimeout {
     param(
         [Parameter(Mandatory = $true)][scriptblock]$ScriptBlock,
@@ -161,7 +149,6 @@ while ($true) {
     }
 }
 
-# 1) ローカル（LOCALAPPDATA）のみを見る未提出データの再開チェック。OneDriveと無関係で常に高速。
 if (Test-Path $baseDir) {
     $oldSubDir = Get-ChildItem -Path $baseDir -Directory -Force -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match "^([0-9]{8})_($todayStr)$" } |
@@ -177,8 +164,6 @@ if (Test-Path $baseDir) {
     }
 }
 
-# 2) 誤提出ZIPの探索。候補ごとにタイムアウト保護し、OneDriveがハングしても最悪でも
-#    (候補数 x TimeoutMs) 秒で必ず打ち切られる。実際の展開・復元処理はStart-Process後に回す。
 if (-not $isResume) {
     $zipSearchTimeoutSec = [Math]::Round(($candidateRoots.Count * 2.5), 1)
     Write-Host "[処理中] 誤提出データがないか確認しています...（最大${zipSearchTimeoutSec}秒）" -ForegroundColor Cyan
@@ -198,7 +183,6 @@ if (-not $isResume) {
     }
 }
 
-# 3) 手入力（ローカルのみ）
 if (-not $isResume) {
     if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
     while ($studentId -notmatch "^[0-9]{8}$") {
@@ -208,14 +192,11 @@ if (-not $isResume) {
     $date = $todayStr
 }
 
-# ここまでで studentId / date が確定。capture.ps1 が discover する保存フォルダを
-# ローカル(LOCALAPPDATA)だけで確実に用意する。
 if (-not (Test-Path $baseDir)) { [void](New-Item -ItemType Directory -Force -Path $baseDir) }
 $saveDir = "$baseDir\${studentId}_${date}"
 if (-not (Test-Path $saveDir)) { [void](New-Item -ItemType Directory -Force -Path $saveDir) }
 [void](Set-Content -Path "$saveDir\student_id.txt" -Value $studentId -Encoding UTF8)
 
-# capture.ps1 のコピーもタイムアウト保護。失敗時は元パスを直接使う。
 $originCapturePath = "$PSScriptRoot\capture.ps1"
 $secureCapturePath = "$baseDir\system_core.ps1"
 $launchTarget = $originCapturePath
@@ -234,18 +215,9 @@ if ($copyResult.Success -and $copyResult.Result -and (Test-Path $secureCapturePa
     Write-Host "[注意] 準備がタイムアウトしたため、元のプログラムからそのまま起動します．" -ForegroundColor Yellow
 }
 
-# ==========================================
-# 監視プロセスの起動（最優先）
-# ここまでの処理はすべてローカル(LOCALAPPDATA)完結か、タイムアウトで打ち切られる処理のみ。
-# 以降の付随処理（ZIP復元・回答フォルダ作成）は、この起動より後に、失敗しても
-# スクリプト全体が止まらない形で実行する。
-# ==========================================
 [void](Start-Process "$PSHOME\powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launchTarget`"" -WindowStyle Hidden)
 Write-Host "`nキャプチャを開始しました．" -ForegroundColor Green
 
-# ==========================================
-# 付随処理（すべて起動後・すべて非致命）
-# ==========================================
 try {
     [void](attrib +h $baseDir)
 } catch {}

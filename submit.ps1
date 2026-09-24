@@ -13,10 +13,14 @@ function Get-CandidateAnswerRoots {
     $roots = New-Object System.Collections.Generic.List[string]
 
     $shellDesktop = [Environment]::GetFolderPath('Desktop')
-    if (-not (Test-IsOneDrivePath $shellDesktop)) { $roots.Add($shellDesktop) }
+    $shellDesktopIsOneDrive = Test-IsOneDrivePath $shellDesktop
+    if (-not $shellDesktopIsOneDrive) { $roots.Add($shellDesktop) }
 
+    # シェルAPIのDesktopがOneDriveリダイレクトで除外された場合，
+    # 実体パスの USERPROFILE\Desktop も学生のエクスプローラーからは見えないため，
+    # 丸ごと候補から外して Downloads 以降にフォールバックする。
     $trueDesktop = Join-Path $env:USERPROFILE 'Desktop'
-    if (-not (Test-IsOneDrivePath $trueDesktop)) { $roots.Add($trueDesktop) }
+    if (-not $shellDesktopIsOneDrive -and -not (Test-IsOneDrivePath $trueDesktop)) { $roots.Add($trueDesktop) }
 
     $downloads = Join-Path $env:USERPROFILE 'Downloads'
     if (-not (Test-IsOneDrivePath $downloads)) { $roots.Add($downloads) }
@@ -92,11 +96,11 @@ if ($processes) {
 
 $subDir = Get-ChildItem -Path $baseDir -Directory -Force | Select-Object -First 1
 
-if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{8})$") {
+if ($subDir -and $subDir.Name -match "^([0-9]{8})_([0-9]{4}_[0-9]{2}_[0-9]{2})$") {
     $saveDir = $subDir.FullName
     $studentId = $matches[1]
     $savedDate = $matches[2]
-    $datetime = Get-Date -Format "yyyyMMdd_HHmmss"
+    $datetime = Get-Date -Format "yyyy_MM_dd_HHmmss"
 
     $zipName = "${studentId}_${datetime}.zip"
     $tempZip = "$env:TEMP\$zipName"

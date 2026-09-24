@@ -248,7 +248,7 @@ try {
 
 
     $script:baseDir  = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
-    $todayStr        = Get-Date -Format "yyyyMMdd"
+    $todayStr        = Get-Date -Format "yyyy_MM_dd"
     $targetFolder    = $null
     $foundStudentId  = ""
 

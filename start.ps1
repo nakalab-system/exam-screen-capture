@@ -6,7 +6,7 @@ $baseDir = "$env:LOCALAPPDATA\Microsoft\CaptureSystem"
 
 $isResume = $false
 $studentId = ""
-$todayStr = Get-Date -Format "yyyyMMdd"
+$todayStr = Get-Date -Format "yyyy_MM_dd"
 $date = ""
 
 function Test-InternetConnectivity {
@@ -51,10 +51,14 @@ function Get-CandidateAnswerRoots {
     $roots = New-Object System.Collections.Generic.List[string]
 
     $shellDesktop = [Environment]::GetFolderPath('Desktop')
-    if (-not (Test-IsOneDrivePath $shellDesktop)) { $roots.Add($shellDesktop) }
+    $shellDesktopIsOneDrive = Test-IsOneDrivePath $shellDesktop
+    if (-not $shellDesktopIsOneDrive) { $roots.Add($shellDesktop) }
 
+    # シェルAPIのDesktopがOneDriveリダイレクトで除外された場合，
+    # 実体パスの USERPROFILE\Desktop も学生のエクスプローラーからは見えないため，
+    # 丸ごと候補から外して Downloads 以降にフォールバックする。
     $trueDesktop = Join-Path $env:USERPROFILE 'Desktop'
-    if (-not (Test-IsOneDrivePath $trueDesktop)) { $roots.Add($trueDesktop) }
+    if (-not $shellDesktopIsOneDrive -and -not (Test-IsOneDrivePath $trueDesktop)) { $roots.Add($trueDesktop) }
 
     $downloads = Join-Path $env:USERPROFILE 'Downloads'
     if (-not (Test-IsOneDrivePath $downloads)) { $roots.Add($downloads) }
@@ -245,6 +249,7 @@ if ($pendingRestoreZip) {
 }
 
 $finalAnswerDir = ""
+$finalAnswerRoot = ""
 $answerSearchTimeoutSec = [Math]::Round(($candidateRoots.Count * 3), 1)
 Write-Host "[処理中] 回答用フォルダを準備しています...（最大${answerSearchTimeoutSec}秒）" -ForegroundColor Cyan
 foreach ($root in $candidateRoots) {
@@ -253,6 +258,7 @@ foreach ($root in $candidateRoots) {
         try {
             if (-not (Test-Path $candidate)) { New-Item -ItemType Directory -Force -Path $candidate -ErrorAction Stop | Out-Null }
             $finalAnswerDir = $candidate
+            $finalAnswerRoot = $root
             break
         } catch {
             continue
@@ -265,6 +271,14 @@ if ($finalAnswerDir) {
     Write-Host " 回答用フォルダを準備しました．" -ForegroundColor Cyan
     Write-Host " -> $finalAnswerDir " -ForegroundColor Yellow
     Write-Host " ※ 提出時にもこのフォルダにZIPが作成されます．場所を必ず覚えておいてください．" -ForegroundColor Yellow
+
+    $shellDesktopPath = [Environment]::GetFolderPath('Desktop')
+    $trueDesktopPath = Join-Path $env:USERPROFILE 'Desktop'
+    $isDesktopRoot = ($finalAnswerRoot -eq $shellDesktopPath) -or ($finalAnswerRoot -eq $trueDesktopPath)
+    if (-not $isDesktopRoot) {
+        Write-Host " ※この場所はエクスプローラーの「デスクトップ」アイコンとは異なります．以下のパスをそのままコピーして開いてください．" -ForegroundColor Yellow
+        Write-Host " -> $finalAnswerDir " -ForegroundColor Yellow
+    }
 } else {
     Write-Host " 【警告】回答用フォルダの自動作成に失敗しました．" -ForegroundColor Red
     Write-Host " キャプチャ自体は正常に動作していますので，このまま試験を続けてください．" -ForegroundColor Yellow

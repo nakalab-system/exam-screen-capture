@@ -71,14 +71,14 @@ fi
 # 3. ZIPアーカイブの作成
 if [ -f "$ID_FILE" ]; then
     STUDENT_ID=$(cat "$ID_FILE" | tr -d '[:space:]')
-    ZIP_NAME="${STUDENT_ID}_$(date +%Y%m%d_%H%M%S).zip"
+    ZIP_NAME="${STUDENT_ID}_$(date +%Y_%m_%d_%H%M%S).zip"
     ANSWER_DIR=""
     if [ -f "$ANSWER_DIR_FILE" ]; then
         ANSWER_DIR=$(cat "$ANSWER_DIR_FILE")
     fi
 
     if [ -z "$ANSWER_DIR" ] || [ ! -d "$ANSWER_DIR" ]; then
-        TODAY_STR=$(date +%Y%m%d)
+        TODAY_STR=$(date +%Y_%m_%d)
         ANSWER_DIR_DESKTOP="$DESKTOP_DIR/${STUDENT_ID}_${TODAY_STR}"
         ANSWER_DIR_DOWNLOADS="$DOWNLOADS_DIR/${STUDENT_ID}_${TODAY_STR}"
 
